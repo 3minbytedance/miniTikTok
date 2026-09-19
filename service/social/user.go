@@ -32,7 +32,7 @@ func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegister
 	}
 
 	// Bloom 判定“可能存在”时再查库确认，防止误判。
-	if common.TestUserBloom(req.Username) {
+	if TestUserBloom(req.Username) {
 		if _, exist, err := mysql.FindUserByName(req.Username); err == nil && exist {
 			resp.StatusCode = common.CodeUsernameAlreadyExists
 			resp.StatusMsg = common.MapErrMsg(common.CodeUsernameAlreadyExists)
@@ -56,8 +56,8 @@ func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegister
 		return resp, nil
 	}
 
-	common.AddToUserBloom(req.Username)
-	redis.SetUserName(ctx, uid, req.Username)
+	AddToUserBloom(req.Username)
+	SetUserName(ctx, uid, req.Username)
 
 	token := common.GenerateToken(uid, req.Username)
 	redis.SetToken(uid, token)
@@ -72,7 +72,7 @@ func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegister
 func (s *SocialServiceImpl) Login(ctx context.Context, req *user.UserLoginRequest) (*user.UserLoginResponse, error) {
 	resp := &user.UserLoginResponse{}
 
-	if !common.TestUserBloom(req.Username) {
+	if !TestUserBloom(req.Username) {
 		resp.StatusCode = common.CodeUsernameNotFound
 		resp.StatusMsg = common.MapErrMsg(common.CodeUsernameNotFound)
 		return resp, nil
@@ -117,7 +117,7 @@ func (s *SocialServiceImpl) GetUserInfoById(ctx context.Context, req *user.UserI
 func (s *SocialServiceImpl) buildUser(ctx context.Context, uid, actorId uint) (*user.User, error) {
 	u := &user.User{Id: int64(uid)}
 
-	name, err := redis.GetUserName(ctx, uid)
+	name, err := GetUserName(ctx, uid)
 	if err != nil {
 		return nil, err
 	}
@@ -129,10 +129,10 @@ func (s *SocialServiceImpl) buildUser(ctx context.Context, uid, actorId uint) (*
 		u.Signature = info.Signature
 	}
 
-	if fc, err := redis.GetFollowCount(ctx, uid); err == nil {
+	if fc, err := GetFollowCount(ctx, uid); err == nil {
 		u.FollowCount = fc
 	}
-	if frc, err := redis.GetFollowerCount(ctx, uid); err == nil {
+	if frc, err := GetFollowerCount(ctx, uid); err == nil {
 		u.FollowerCount = frc
 	}
 
@@ -150,7 +150,7 @@ func (s *SocialServiceImpl) buildUser(ctx context.Context, uid, actorId uint) (*
 	}
 
 	if actorId != 0 && actorId != uid {
-		if followed, err := redis.IsFollowing(ctx, actorId, uid); err == nil {
+		if followed, err := IsFollowing(ctx, actorId, uid); err == nil {
 			u.IsFollow = followed
 		}
 	}

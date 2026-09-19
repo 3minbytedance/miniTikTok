@@ -10,7 +10,6 @@ import (
 	"douyin/dal/mysql"
 	"douyin/kitex_gen/comment"
 	"douyin/kitex_gen/user"
-	"douyin/mw/redis"
 )
 
 // CommentAction 发/删评论：先写 MySQL，成功后失效评论数缓存。
@@ -33,8 +32,8 @@ func (v *VideoAppServiceImpl) CommentAction(ctx context.Context, req *comment.Co
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
 		}
-		redis.InvalidateCommentCount(ctx, vid)
-		common.AddToCommentBloom(itoa64(int64(vid)))
+		InvalidateCommentCount(ctx, vid)
+		AddToCommentBloom(itoa64(int64(vid)))
 		resp.StatusCode = common.CodeSuccess
 		resp.Comment = v.buildComment(ctx, c, id)
 		return resp, nil
@@ -56,7 +55,7 @@ func (v *VideoAppServiceImpl) CommentAction(ctx context.Context, req *comment.Co
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
 		}
-		redis.InvalidateCommentCount(ctx, vid)
+		InvalidateCommentCount(ctx, vid)
 		resp.StatusCode = common.CodeSuccess
 		return resp, nil
 
@@ -84,10 +83,10 @@ func (v *VideoAppServiceImpl) GetCommentList(ctx context.Context, req *comment.C
 }
 
 func (v *VideoAppServiceImpl) GetCommentCount(ctx context.Context, videoId int64) (int32, error) {
-	if !common.TestCommentBloom(itoa64(videoId)) {
+	if !TestCommentBloom(itoa64(videoId)) {
 		return 0, nil
 	}
-	return redis.GetCommentCount(ctx, uint(videoId))
+	return GetCommentCount(ctx, uint(videoId))
 }
 
 // buildComment 组装评论（用户信息跨域 RPC 查 social）。

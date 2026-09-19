@@ -8,7 +8,8 @@ import (
 // Delimiter redis key 分隔符
 const Delimiter = ":"
 
-func buildKey(parts ...interface{}) string {
+// BuildKey 用分隔符拼接 redis key 片段。
+func BuildKey(parts ...interface{}) string {
 	ss := make([]string, 0, len(parts))
 	for _, p := range parts {
 		switch v := p.(type) {
@@ -39,36 +40,14 @@ func toInt64(v interface{}) int64 {
 	return 0
 }
 
-// key 前缀
+// mw/redis 仅保留网关与各服务共享的基础设施 key；
+// 各业务域 key 定义在对应服务内（service/social/cache.go、service/video/cache.go）。
 const (
-	tokenKey        = "token"
-	userNameKey     = "uname"  // uname:{uid} 用户名
-	followSetKey    = "follow" // follow:{uid} 关注集合
-	followerSetKey  = "follower"
-	followCountKey  = "followcnt"
-	followerCntKey  = "followercnt"
-	feedKey         = "videos" // feed ZSet
-	workCountKey    = "workcnt"
-	commentCountKey = "vcmtcnt"
-	videoFavCount   = "vfav"    // 视频点赞数
-	userFavSet      = "ufavset" // 用户点赞视频集合
-	userFavCount    = "ufavcnt" // 用户点赞数
-	userTotalFav    = "utfav"   // 作者获赞总数
-	lockPrefix      = "lock"
+	tokenKey   = "token"
+	lockPrefix = "lock"
 )
 
-func tokenK(uid uint) string     { return buildKey(tokenKey, uid) }
-func userNameK(uid uint) string  { return buildKey(userNameKey, uid) }
-func followSetK(uid uint) string { return buildKey(followSetKey, uid) }
-func followerSetK(uid uint) string {
-	return buildKey(followerSetKey, uid)
+func tokenK(uid uint) string { return BuildKey(tokenKey, uid) }
+func lockK(key string) string {
+	return BuildKey(lockPrefix, key)
 }
-func followCountK(uid uint) string  { return buildKey(followCountKey, uid) }
-func followerCntK(uid uint) string  { return buildKey(followerCntKey, uid) }
-func workCountK(uid uint) string    { return buildKey(workCountKey, uid) }
-func commentCountK(vid uint) string { return buildKey(commentCountKey, vid) }
-func videoFavK(vid uint) string     { return buildKey(videoFavCount, vid) }
-func userFavSetK(uid uint) string   { return buildKey(userFavSet, uid) }
-func userFavCntK(uid uint) string   { return buildKey(userFavCount, uid) }
-func userTotalFavK(uid uint) string { return buildKey(userTotalFav, uid) }
-func lockK(key string) string       { return buildKey(lockPrefix, key) }

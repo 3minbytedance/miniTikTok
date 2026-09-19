@@ -35,8 +35,8 @@ func main() {
 	)
 	defer shutdown()
 
-	// 2. 存储、缓存与消息队列
-	if err := mysql.Init(config.Conf); err != nil {
+	// 2. 存储、缓存与消息队列（video 独立数据库：douyin_video）
+	if err := mysql.InitVideo(config.Conf); err != nil {
 		zap.L().Fatal("init mysql failed", zap.Error(err))
 	}
 	if err := redis.Init(config.Conf); err != nil {
@@ -54,17 +54,17 @@ func main() {
 	if err := common.InitSensitiveFilter(); err != nil {
 		zap.L().Warn("init sensitive filter failed", zap.Error(err))
 	}
-	common.InitCommentBloomFilter()
-	common.InitWorkCountFilter()
-	common.InitIsFavoriteFilter()
-	common.InitFavoriteVideoIdFilter()
-	common.LoadCommentVideoIdToBloomFilter()
-	common.LoadWorkCountToBloomFilter()
-	common.LoadIsFavoriteToBloomFilter()
-	common.LoadFavoriteVideoIdToBloomFilter()
+	InitCommentBloomFilter()
+	InitWorkCountFilter()
+	InitIsFavoriteFilter()
+	InitFavoriteVideoIdFilter()
+	LoadCommentVideoIdToBloomFilter()
+	LoadWorkCountToBloomFilter()
+	LoadIsFavoriteToBloomFilter()
+	LoadFavoriteVideoIdToBloomFilter()
 
 	// 4. kafka 视频发布消费者
-	kafka.InitVideoKafka()
+	InitVideoKafka()
 
 	// 5. 跨域 RPC client
 	if err := initSocialClient(); err != nil {

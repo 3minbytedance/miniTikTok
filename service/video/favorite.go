@@ -7,7 +7,6 @@ import (
 	"douyin/dal/mysql"
 	"douyin/kitex_gen/favorite"
 	"douyin/kitex_gen/video"
-	"douyin/mw/redis"
 	"douyin/observability"
 )
 
@@ -35,7 +34,7 @@ func (v *VideoAppServiceImpl) FavoriteAction(ctx context.Context, req *favorite.
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
 		}
-		common.AddToIsFavoriteBloom(uid, vid)
+		AddToIsFavoriteBloom(uid, vid)
 	case 2: // 取消点赞
 		if !mysql.IsFavorite(uid, vid) {
 			resp.StatusCode = common.CodeFavoriteRepeat
@@ -53,7 +52,7 @@ func (v *VideoAppServiceImpl) FavoriteAction(ctx context.Context, req *favorite.
 		return resp, nil
 	}
 
-	redis.InvalidateFavorite(ctx, uid, vid, authorId)
+	InvalidateFavorite(ctx, uid, vid, authorId)
 	resp.StatusCode = common.CodeSuccess
 	return resp, nil
 }
@@ -61,7 +60,7 @@ func (v *VideoAppServiceImpl) FavoriteAction(ctx context.Context, req *favorite.
 // GetFavoriteList 用户点赞视频列表。
 func (v *VideoAppServiceImpl) GetFavoriteList(ctx context.Context, req *favorite.FavoriteListRequest) (*favorite.FavoriteListResponse, error) {
 	resp := &favorite.FavoriteListResponse{StatusCode: common.CodeSuccess}
-	ids, err := redis.GetUserFavoriteSet(ctx, uint(req.UserId))
+	ids, err := GetUserFavoriteSet(ctx, uint(req.UserId))
 	if err != nil {
 		observability.Logger(ctx).Error("get favorite set failed", errField(err))
 		resp.StatusCode = common.CodeServerBusy
@@ -82,15 +81,15 @@ func (v *VideoAppServiceImpl) GetFavoriteList(ctx context.Context, req *favorite
 }
 
 func (v *VideoAppServiceImpl) GetVideoFavoriteCount(ctx context.Context, videoId int64) (int32, error) {
-	return redis.GetVideoFavoriteCount(ctx, uint(videoId))
+	return GetVideoFavoriteCount(ctx, uint(videoId))
 }
 
 func (v *VideoAppServiceImpl) GetUserFavoriteCount(ctx context.Context, userId int64) (int32, error) {
-	return redis.GetUserFavoriteCount(ctx, uint(userId))
+	return GetUserFavoriteCount(ctx, uint(userId))
 }
 
 func (v *VideoAppServiceImpl) GetUserTotalFavoritedCount(ctx context.Context, userId int64) (int32, error) {
-	return redis.GetUserTotalFavoritedCount(ctx, uint(userId))
+	return GetUserTotalFavoritedCount(ctx, uint(userId))
 }
 
 func (v *VideoAppServiceImpl) IsUserFavorite(ctx context.Context, req *favorite.IsUserFavoriteRequest) (bool, error) {
@@ -99,8 +98,8 @@ func (v *VideoAppServiceImpl) IsUserFavorite(ctx context.Context, req *favorite.
 
 // isFavorite Bloom 先判否，再查缓存/DB。
 func (v *VideoAppServiceImpl) isFavorite(ctx context.Context, uid, videoId uint) (bool, error) {
-	if !common.TestIsFavoriteBloom(uid, videoId) {
+	if !TestIsFavoriteBloom(uid, videoId) {
 		return false, nil
 	}
-	return redis.IsUserFavorite(ctx, uid, videoId)
+	return IsUserFavorite(ctx, uid, videoId)
 }

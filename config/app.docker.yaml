@@ -38,13 +38,18 @@ local:
     port: 3306
     username: doushen
     password: doushen123
-    database: doushen
+    social_database: douyin_social
+    video_database: douyin_video
+    # 读副本（主从读写分离）：写走 mysql 主库，读在 replica 间负载均衡
+    replicas:
+      - address: "mysql-replica"
+        port: 3306
     timeout: 10
   redis:
     address: "redis"
     port: 6379
     password: "redis123"
-    comment_db: 0
+    db: 0
     pool_size: 30
     min_idle_conns: 10
     expire_time: 1800
@@ -64,13 +69,17 @@ remote:
     port: 3306
     username: doushen
     password: doushen123
-    database: doushen
+    social_database: douyin_social
+    video_database: douyin_video
+    replicas:
+      - address: "mysql-replica"
+        port: 3306
     timeout: 10
   redis:
     address: "redis"
     port: 6379
     password: "redis123"
-    comment_db: 0
+    db: 0
     pool_size: 30
     min_idle_conns: 10
     expire_time: 1800

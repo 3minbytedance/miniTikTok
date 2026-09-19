@@ -47,25 +47,30 @@ type LogConfig struct {
 }
 
 type MySQLConfig struct {
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	Address  string `mapstructure:"address"`
-	Port     int    `mapstructure:"port"`
-	Database string `mapstructure:"database"`
-	Timeout  int    `mapstructure:"timeout"`
+	Username       string         `mapstructure:"username"`
+	Password       string         `mapstructure:"password"`
+	Address        string         `mapstructure:"address"`
+	Port           int            `mapstructure:"port"`
+	SocialDatabase string         `mapstructure:"social_database"` // social 服务库（用户/关系域）
+	VideoDatabase  string         `mapstructure:"video_database"`  // video 服务库（视频/评论/点赞域）
+	Replicas       []MySQLReplica `mapstructure:"replicas"`        // 读副本列表，为空则不启用读写分离（全部走主库）
+	Timeout        int            `mapstructure:"timeout"`
+}
+
+// MySQLReplica 读副本连接信息，账号密码复用主库配置。
+type MySQLReplica struct {
+	Address string `mapstructure:"address"`
+	Port    int    `mapstructure:"port"`
 }
 
 type RedisConfig struct {
-	Address           string `mapstructure:"address"`
-	Port              int    `mapstructure:"port"`
-	Password          string `mapstructure:"password"`
-	DB                int    `mapstructure:"db"`
-	UerFavoriteRDB    int    `mapstructure:"ufvdb"`
-	VideoFavoritedRDB int    `mapstructure:"vfudb"`
-	PoolSize          int    `mapstructure:"pool_size"`
-	MinIdleConns      int    `mapstructure:"min_idle_conns"`
-	CommentDB         int    `mapstructure:"comment_db"`
-	ExpireTime        int64  `mapstructure:"expire_time"`
+	Address      string `mapstructure:"address"`
+	Port         int    `mapstructure:"port"`
+	Password     string `mapstructure:"password"`
+	DB           int    `mapstructure:"db"`
+	PoolSize     int    `mapstructure:"pool_size"`
+	MinIdleConns int    `mapstructure:"min_idle_conns"`
+	ExpireTime   int64  `mapstructure:"expire_time"`
 }
 
 type KafkaConfig struct {

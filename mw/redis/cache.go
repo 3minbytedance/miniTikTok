@@ -20,8 +20,8 @@ const (
 	lockMaxRetry = 6
 )
 
-// jitterTTL 在基础 TTL 上增加 0~20% 随机抖动，防止缓存雪崩。
-func jitterTTL(base time.Duration) time.Duration {
+// JitterTTL 在基础 TTL 上增加 0~20% 随机抖动，防止缓存雪崩。
+func JitterTTL(base time.Duration) time.Duration {
 	if base <= 0 {
 		base = RdbExpireTime
 	}
@@ -32,19 +32,19 @@ func jitterTTL(base time.Duration) time.Duration {
 	return base + time.Duration(rand.Int63n(jitter))
 }
 
-// currentUnix 当前 unix 秒。
-func currentUnix() int64 {
+// CurrentUnix 当前 unix 秒。
+func CurrentUnix() int64 {
 	return time.Now().Unix()
 }
 
-// shortTTL 聚合类/变化频繁数据使用较短 TTL。
-func shortTTL() time.Duration {
-	return jitterTTL(30 * time.Second)
+// ShortTTL 聚合类/变化频繁数据使用较短 TTL。
+func ShortTTL() time.Duration {
+	return JitterTTL(30 * time.Second)
 }
 
-// invalidate 删除一个或多个缓存 key（写操作后调用）。
+// Invalidate 删除一个或多个缓存 key（写操作后调用）。
 // key 不存在不视为错误。
-func invalidate(ctx context.Context, keys ...string) {
+func Invalidate(ctx context.Context, keys ...string) {
 	if len(keys) == 0 {
 		return
 	}
@@ -68,8 +68,8 @@ func releaseLock(ctx context.Context, key string) {
 	}
 }
 
-// loadInt 通用整数 cache-aside：未命中加锁、双检、回源、回填（带 TTL 抖动）。
-func loadInt(ctx context.Context, key, business string, ttl time.Duration, load func(context.Context) (int64, error)) (int64, error) {
+// LoadInt 通用整数 cache-aside：未命中加锁、双检、回源、回填（带 TTL 抖动）。
+func LoadInt(ctx context.Context, key, business string, ttl time.Duration, load func(context.Context) (int64, error)) (int64, error) {
 	if v, err := Rdb.Get(ctx, key).Int64(); err == nil {
 		observability.RecordCache(business, "hit")
 		return v, nil
@@ -101,17 +101,17 @@ func loadInt(ctx context.Context, key, business string, ttl time.Duration, load 
 	if err != nil {
 		return 0, err
 	}
-	if err := Rdb.Set(ctx, key, val, jitterTTL(ttl)).Err(); err != nil {
+	if err := Rdb.Set(ctx, key, val, JitterTTL(ttl)).Err(); err != nil {
 		zap.L().Warn("redis set int cache failed", zap.String("key", key), zap.Error(err))
 	}
 	return val, nil
 }
 
-// loadUintSet 通用集合 cache-aside。空结果不缓存（由上层 Bloom 防穿透）。
-func loadUintSet(ctx context.Context, key, business string, ttl time.Duration, load func(context.Context) ([]uint, error)) ([]uint, error) {
+// LoadUintSet 通用集合 cache-aside。空结果不缓存（由上层 Bloom 防穿透）。
+func LoadUintSet(ctx context.Context, key, business string, ttl time.Duration, load func(context.Context) ([]uint, error)) ([]uint, error) {
 	if vals, err := Rdb.SMembers(ctx, key).Result(); err == nil && len(vals) > 0 {
 		observability.RecordCache(business, "hit")
-		return parseUintMembers(vals), nil
+		return ParseUintMembers(vals), nil
 	} else if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
@@ -125,13 +125,13 @@ func loadUintSet(ctx context.Context, key, business string, ttl time.Duration, l
 		}
 		time.Sleep(lockRetryGap)
 		if ms, err := Rdb.SMembers(ctx, key).Result(); err == nil && len(ms) > 0 {
-			return parseUintMembers(ms), nil
+			return ParseUintMembers(ms), nil
 		}
 	}
 	if locked {
 		defer releaseLock(ctx, key)
 		if ms, err := Rdb.SMembers(ctx, key).Result(); err == nil && len(ms) > 0 {
-			return parseUintMembers(ms), nil
+			return ParseUintMembers(ms), nil
 		}
 	}
 
@@ -146,7 +146,7 @@ func loadUintSet(ctx context.Context, key, business string, ttl time.Duration, l
 		}
 		pipe := Rdb.Pipeline()
 		pipe.SAdd(ctx, key, members...)
-		pipe.Expire(ctx, key, jitterTTL(ttl))
+		pipe.Expire(ctx, key, JitterTTL(ttl))
 		if _, err := pipe.Exec(ctx); err != nil {
 			zap.L().Warn("redis set cache failed", zap.String("key", key), zap.Error(err))
 		}
@@ -154,15 +154,15 @@ func loadUintSet(ctx context.Context, key, business string, ttl time.Duration, l
 	return values, nil
 }
 
-// setContains 确保集合已加载后判断成员关系。
-func setContains(ctx context.Context, key, business string, ttl time.Duration, target uint, load func(context.Context) ([]uint, error)) (bool, error) {
-	if _, err := loadUintSet(ctx, key, business, ttl, load); err != nil {
+// SetContains 确保集合已加载后判断成员关系。
+func SetContains(ctx context.Context, key, business string, ttl time.Duration, target uint, load func(context.Context) ([]uint, error)) (bool, error) {
+	if _, err := LoadUintSet(ctx, key, business, ttl, load); err != nil {
 		return false, err
 	}
 	return Rdb.SIsMember(ctx, key, target).Result()
 }
 
-func parseUintMembers(members []string) []uint {
+func ParseUintMembers(members []string) []uint {
 	out := make([]uint, 0, len(members))
 	for _, m := range members {
 		if n, err := strconv.ParseUint(m, 10, 64); err == nil {

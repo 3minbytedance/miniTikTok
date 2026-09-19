@@ -13,6 +13,7 @@ require (
 	github.com/cloudwego/hertz v0.10.6
 	github.com/cloudwego/kitex v0.16.3
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/go-sql-driver/mysql v1.7.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/hertz-contrib/etag v0.1.0
@@ -29,8 +30,9 @@ require (
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/trace v1.37.0
 	go.uber.org/zap v1.27.0
-	gorm.io/driver/mysql v1.5.1
-	gorm.io/gorm v1.25.3
+	gorm.io/driver/mysql v1.5.7
+	gorm.io/gorm v1.26.0
+	gorm.io/plugin/dbresolver v1.6.2
 )
 
 require (
@@ -59,7 +61,6 @@ require (
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.1 // indirect

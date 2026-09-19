@@ -34,11 +34,27 @@ func Init(appConfig *config.AppConfig) (err error) {
 	brokers := []string{brokerUrl}
 	kafkaManager = NewKafkaManager(brokers)
 
-	//InitMessageKafka()
-	//InitCommentKafka()
-	//InitVideoKafka()
-
 	return nil
+}
+
+// Brokers 返回当前 broker 地址列表。
+func Brokers() []string {
+	return kafkaManager.Brokers
+}
+
+// NewProducer 创建指定 topic 的生产者。
+func NewProducer(topic string) *kafka.Writer {
+	return kafkaManager.NewProducer(topic)
+}
+
+// NewConsumer 创建指定 topic/group 的消费者。
+func NewConsumer(topic, groupId string) *kafka.Reader {
+	return kafkaManager.NewConsumer(topic, groupId)
+}
+
+// ProduceMessage 向 Kafka 写入消息的公共函数, 由于不同业务的消息格式不同, 所以使用 interface{} 代替
+func ProduceMessage(producer *kafka.Writer, message interface{}) error {
+	return kafkaManager.ProduceMessage(producer, message)
 }
 
 func NewKafkaManager(brokers []string) *Manager {

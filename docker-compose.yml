@@ -1,6 +1,7 @@
 # 一键启动整套环境（基础设施 + 4 个微服务）：
 #   docker compose up -d --build
-# MySQL 自动创建 doushen 库；业务表由服务启动时的 GORM AutoMigrate 自动创建。
+# MySQL 通过 scripts/mysql-init 自动创建 douyin_social / douyin_video 两个库；
+# 业务表由各服务启动时的 GORM AutoMigrate 自动创建（social: user/user_info/user_follow，video: video/comment/favorite）。
 
 name: douyin
 
@@ -36,15 +37,45 @@ services:
   mysql:
     image: mysql:8.0
     container_name: douyin-mysql
+    # 主库：开启 binlog + GTID，供 replica 做流复制
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
     environment:
       MYSQL_ROOT_PASSWORD: root123
-      MYSQL_DATABASE: doushen
       MYSQL_USER: doushen
       MYSQL_PASSWORD: doushen123
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./scripts/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mysql-replica:
+    image: mysql:8.0
+    container_name: douyin-mysql-replica
+    # 从库：只读，server-id 与主库不同；复制由 scripts/mysql-replica-init 初始化
+    command:
+      - --server-id=2
+      - --read-only=ON
+      - --super-read-only=ON
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_replica_data:/var/lib/mysql
+      - ./scripts/mysql-replica-init:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
       interval: 10s
@@ -123,6 +154,8 @@ services:
         condition: service_healthy
       mysql:
         condition: service_healthy
+      mysql-replica:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -143,6 +176,8 @@ services:
       etcd:
         condition: service_healthy
       mysql:
+        condition: service_healthy
+      mysql-replica:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -195,6 +230,7 @@ services:
 volumes:
   etcd_data:
   mysql_data:
+  mysql_replica_data:
   redis_data:
   mongo_data:
   kafka_data:

@@ -28,9 +28,9 @@ func Init(appConfig *config.AppConfig) (err error) {
 
 	Rdb = redis.NewClient(&redis.Options{
 		Addr:         fmt.Sprintf("%s:%d", conf.Address, conf.Port),
-		Password:     conf.Password,  // 密码
-		DB:           conf.CommentDB, // 数据库
-		PoolSize:     conf.PoolSize,  // 连接池大小
+		Password:     conf.Password, // 密码
+		DB:           conf.DB,       // 数据库
+		PoolSize:     conf.PoolSize, // 连接池大小
 		MinIdleConns: conf.MinIdleConns,
 	})
 	if err = Rdb.Ping(Ctx).Err(); err != nil {

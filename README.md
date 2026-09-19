@@ -78,7 +78,17 @@
 编辑 [config/app.yaml](config/app.yaml)，把 MySQL / Redis / Kafka / MongoDB 连接信息改成本机环境。
 etcd 地址默认 `127.0.0.1:2379`。
 
-> 服务启动时会通过 GORM AutoMigrate 自动建表（user_login / user_info / video / comments / favorite / user_follow），MySQL 库需提前创建（compose 已自动创建 `doushen` 库）。
+> 服务启动时会通过 GORM AutoMigrate 自动建表（幂等增量迁移，走主库），并自动创建缺失的数据库：
+> - social 服务独占 `douyin_social` 库（user_login / user_info / user_follow）
+> - video 服务独占 `douyin_video` 库（video / comments / favorite）
+>
+> **MySQL 主从读写分离**：`mysql.replicas` 配置读副本后，写/事务走主库、读在副本间负载均衡（gorm dbresolver），
+> 登录/注册等认证路径强制读主库以规避主从延迟；`replicas` 留空则全部走主库（单机部署）。
+> compose 部署包含 `mysql`（主）+ `mysql-replica`（从，GTID 流复制，只读）两个容器；
+> 复制状态可用 `docker exec douyin-mysql-replica mysql -uroot -proot123 -e "SHOW REPLICA STATUS\G"` 检查。
+>
+> 数据库名可在 [config/app.yaml](config/app.yaml) 的 `mysql.social_database` / `mysql.video_database` 中调整；
+> 主从建库与复制初始化脚本见 [scripts/mysql-init](scripts/mysql-init) 与 [scripts/mysql-replica-init](scripts/mysql-replica-init)。
 
 ### 3. 编译与启动
 

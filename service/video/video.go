@@ -13,8 +13,6 @@ import (
 	"douyin/dal/mysql"
 	"douyin/kitex_gen/user"
 	"douyin/kitex_gen/video"
-	"douyin/mw/kafka"
-	"douyin/mw/redis"
 	"douyin/observability"
 
 	"github.com/google/uuid"
@@ -35,7 +33,7 @@ func (v *VideoAppServiceImpl) VideoFeed(ctx context.Context, req *video.VideoFee
 		}
 	}
 
-	ids, err := redis.GetFeedVideoIDs(ctx, latest, feedPageSize)
+	ids, err := GetFeedVideoIDs(ctx, latest, feedPageSize)
 	if err != nil {
 		observability.Logger(ctx).Error("get feed ids failed", errField(err))
 		resp.StatusCode = common.CodeServerBusy
@@ -44,8 +42,8 @@ func (v *VideoAppServiceImpl) VideoFeed(ctx context.Context, req *video.VideoFee
 	}
 	// feed 冷启动：从 MySQL 回填后重试一次。
 	if len(ids) == 0 {
-		if berr := redis.BackfillFeed(ctx); berr == nil {
-			ids, _ = redis.GetFeedVideoIDs(ctx, latest, feedPageSize)
+		if berr := BackfillFeed(ctx); berr == nil {
+			ids, _ = GetFeedVideoIDs(ctx, latest, feedPageSize)
 		}
 	}
 
@@ -93,7 +91,7 @@ func (v *VideoAppServiceImpl) PublishVideo(ctx context.Context, req *video.Publi
 		return resp, nil
 	}
 
-	if err := kafka.VideoMQInstance.Produce(&kafka.VideoMessage{
+	if err := VideoMQInstance.Produce(&VideoMessage{
 		VideoPath:     localPath,
 		VideoFileName: fileName,
 		UserID:        uint(req.UserId),
@@ -122,10 +120,10 @@ func (v *VideoAppServiceImpl) GetPublishVideoList(ctx context.Context, req *vide
 
 func (v *VideoAppServiceImpl) GetWorkCount(ctx context.Context, userId int64) (int32, error) {
 	// Bloom 判否：作者无作品直接返回 0。
-	if !common.TestWorkCountBloom(strconv.FormatInt(userId, 10)) {
+	if !TestWorkCountBloom(strconv.FormatInt(userId, 10)) {
 		return 0, nil
 	}
-	return redis.GetWorkCount(ctx, uint(userId))
+	return GetWorkCount(ctx, uint(userId))
 }
 
 // buildVideo 组装视频详情：点赞/评论计数为进程内调用，作者信息为唯一跨域 RPC。
@@ -136,10 +134,10 @@ func (v *VideoAppServiceImpl) buildVideo(ctx context.Context, mv *model.Video, a
 		PlayUrl:  common.ResolveURL(mv.VideoUrl),
 		CoverUrl: common.ResolveURL(mv.CoverUrl),
 	}
-	if fc, err := redis.GetVideoFavoriteCount(ctx, mv.ID); err == nil {
+	if fc, err := GetVideoFavoriteCount(ctx, mv.ID); err == nil {
 		vv.FavoriteCount = fc
 	}
-	if cc, err := redis.GetCommentCount(ctx, mv.ID); err == nil {
+	if cc, err := GetCommentCount(ctx, mv.ID); err == nil {
 		vv.CommentCount = cc
 	}
 	if actorId != 0 {

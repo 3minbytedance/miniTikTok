@@ -36,13 +36,18 @@ local:
     port: 3306
     username: doushen
     password: CEzYXnXpGcx5rZwW
-    database: doushen
+    social_database: douyin_social
+    video_database: douyin_video
+    # 读副本（主从读写分离）：配置后写走主库、读在副本间负载均衡；留空则全部走主库
+    # replicas:
+    #   - address: "127.0.0.1"
+    #     port: 3307
     timeout: 10
   redis:
     address: "127.0.0.1"
     port: 6379
     password: "fl#ztS6g0F9O"
-    comment_db: 0
+    db: 0
     pool_size: 30
     min_idle_conns: 30
     expire_time: 1800   # 30分钟
@@ -62,13 +67,17 @@ remote:
     port: 3306
     username: doushen
     password: CEzYXnXpGcx5rZwW
-    database: doushen
+    social_database: douyin_social
+    video_database: douyin_video
+    # replicas:
+    #   - address: "127.0.0.1"
+    #     port: 3307
     timeout: 10
   redis:
     address: "127.0.0.1"
     port: 6379
     password: "fl#ztS6g0F9O"
-    comment_db: 0
+    db: 0
     pool_size: 30
     min_idle_conns: 30
     expire_time: 1800   # 30分钟

@@ -8,7 +8,6 @@ import (
 	"douyin/dal/mysql"
 	"douyin/kitex_gen/relation"
 	"douyin/kitex_gen/user"
-	"douyin/mw/redis"
 )
 
 // RelationAction 关注/取关：先写 MySQL，成功后删除双方关系缓存。
@@ -35,7 +34,7 @@ func (s *SocialServiceImpl) RelationAction(ctx context.Context, req *relation.Re
 			return resp, nil
 		}
 		// 关注关系可能为新建用户，补充 Bloom
-		common.AddToRelationFollowIdBloom(itou(uid))
+		AddToRelationFollowIdBloom(itou(uid))
 	case 2: // 取关
 		if !mysql.IsFollowing(uid, toUid) {
 			resp.StatusCode = common.CodeCancelFollowRepeat
@@ -54,13 +53,13 @@ func (s *SocialServiceImpl) RelationAction(ctx context.Context, req *relation.Re
 	}
 
 	// 写库成功后失效缓存（cache-aside invalidate）。
-	redis.InvalidateRelation(ctx, uid, toUid)
+	InvalidateRelation(ctx, uid, toUid)
 	resp.StatusCode = common.CodeSuccess
 	return resp, nil
 }
 
 func (s *SocialServiceImpl) GetFollowList(ctx context.Context, req *relation.FollowListRequest) (*relation.FollowListResponse, error) {
-	ids, err := redis.GetFollowSet(ctx, uint(req.ToUserId))
+	ids, err := GetFollowSet(ctx, uint(req.ToUserId))
 	if err != nil {
 		return &relation.FollowListResponse{StatusCode: common.CodeDBError, StatusMsg: common.MapErrMsg(common.CodeDBError)}, nil
 	}
@@ -71,7 +70,7 @@ func (s *SocialServiceImpl) GetFollowList(ctx context.Context, req *relation.Fol
 }
 
 func (s *SocialServiceImpl) GetFollowerList(ctx context.Context, req *relation.FollowerListRequest) (*relation.FollowerListResponse, error) {
-	ids, err := redis.GetFollowerSet(ctx, uint(req.ToUserId))
+	ids, err := GetFollowerSet(ctx, uint(req.ToUserId))
 	if err != nil {
 		return &relation.FollowerListResponse{StatusCode: common.CodeDBError, StatusMsg: common.MapErrMsg(common.CodeDBError)}, nil
 	}
@@ -83,13 +82,13 @@ func (s *SocialServiceImpl) GetFollowerList(ctx context.Context, req *relation.F
 
 // GetFriendList 好友 = 双向关注，取关注集合与粉丝集合的交集。
 func (s *SocialServiceImpl) GetFriendList(ctx context.Context, req *relation.FriendListRequest) (*relation.FriendListResponse, error) {
-	follows, err := redis.GetFollowSet(ctx, uint(req.ToUserId))
+	follows, err := GetFollowSet(ctx, uint(req.ToUserId))
 	if err != nil {
 		return &relation.FriendListResponse{StatusCode: common.CodeDBError, StatusMsg: common.MapErrMsg(common.CodeDBError)}, nil
 	}
 	friends := make([]uint, 0, len(follows))
 	for _, id := range follows {
-		if ok, _ := redis.IsFollowing(ctx, id, uint(req.ToUserId)); ok {
+		if ok, _ := IsFollowing(ctx, id, uint(req.ToUserId)); ok {
 			friends = append(friends, id)
 		}
 	}
@@ -100,7 +99,7 @@ func (s *SocialServiceImpl) GetFriendList(ctx context.Context, req *relation.Fri
 }
 
 func (s *SocialServiceImpl) GetFollowListCount(ctx context.Context, userId int64) (int32, error) {
-	c, err := redis.GetFollowCount(ctx, uint(userId))
+	c, err := GetFollowCount(ctx, uint(userId))
 	if err != nil {
 		return 0, err
 	}
@@ -108,7 +107,7 @@ func (s *SocialServiceImpl) GetFollowListCount(ctx context.Context, userId int64
 }
 
 func (s *SocialServiceImpl) GetFollowerListCount(ctx context.Context, userId int64) (int32, error) {
-	c, err := redis.GetFollowerCount(ctx, uint(userId))
+	c, err := GetFollowerCount(ctx, uint(userId))
 	if err != nil {
 		return 0, err
 	}
@@ -116,11 +115,11 @@ func (s *SocialServiceImpl) GetFollowerListCount(ctx context.Context, userId int
 }
 
 func (s *SocialServiceImpl) IsFollowing(ctx context.Context, req *relation.IsFollowingRequest) (bool, error) {
-	return redis.IsFollowing(ctx, uint(req.ActorId), uint(req.UserId))
+	return IsFollowing(ctx, uint(req.ActorId), uint(req.UserId))
 }
 
 func (s *SocialServiceImpl) IsFriend(ctx context.Context, req *relation.IsFriendRequest) (bool, error) {
-	return redis.IsFriend(ctx, uint(req.ActorId), uint(req.UserId))
+	return IsFriend(ctx, uint(req.ActorId), uint(req.UserId))
 }
 
 // buildUserList 顺序组装用户信息（跨域统计走短 TTL 缓存，避免 goroutine fan-out）。
