@@ -37,6 +37,6 @@ func Init(appConfig *config.AppConfig) (err error) {
 		return
 	}
 
-	Mongo = client.Database("admin")
+	Mongo = client.Database(conf.DB)
 	return
 }

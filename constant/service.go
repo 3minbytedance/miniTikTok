@@ -1,17 +1,25 @@
 package constant
 
-const EtcdAddr = "127.0.0.1:2379"
+import "os"
+
+// EtcdAddr 注册中心地址。容器部署时通过 DOUYIN_ETCD_ADDR 覆盖（如 etcd:2379）。
+var EtcdAddr = getEnv("DOUYIN_ETCD_ADDR", "127.0.0.1:2379")
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// 服务名
 const ApiServiceName = "api-service"
-const ApiServicePort = ":8080"
-const CommentServiceName = "comment-service"
-const CommentServicePort = ":4001"
-const UserServiceName = "user-service"
-const UserServicePort = ":4002"
+const SocialServiceName = "social-service"
 const VideoServiceName = "video-service"
-const VideoServicePort = ":4003"
-const RelationServiceName = "relation-service"
-const RelationServicePort = ":4004"
 const MessageServiceName = "message-service"
+
+// 服务监听端口
+const ApiServicePort = ":8080"
+const SocialServicePort = ":4002"
+const VideoServicePort = ":4003"
 const MessageServicePort = ":4005"
-const FavoriteServiceName = "favorite-service"
-const FavoriteServicePort = ":4006"

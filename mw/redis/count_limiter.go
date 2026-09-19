@@ -1,7 +1,6 @@
 package redis
 
 import (
-	"strconv"
 	"strings"
 	"time"
 )
@@ -24,82 +23,36 @@ const (
 	messageMaxCount  = 50
 )
 
-func IncrementLoginLimiterCount(ip string) bool {
-	baseSlice := []string{loginLimit, ip}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.SetNX(Ctx, key, 0, limiterTime)
-	result := Rdb.Get(Ctx, key).Val()
-	count, err := strconv.Atoi(result)
+func incrementLimiterCount(key string, maxCount int) bool {
+	count, err := Rdb.Incr(Ctx, key).Result()
 	if err != nil {
 		return false
 	}
-	if count < loginMaxCount {
-		Rdb.Incr(Ctx, key)
-		return true
+	if count == 1 {
+		// 首次计数，设置过期时间
+		if _, err := Rdb.Expire(Ctx, key, limiterTime).Result(); err != nil {
+			return false
+		}
 	}
-	return false
+	return count <= int64(maxCount)
+}
+
+func IncrementLoginLimiterCount(ip string) bool {
+	return incrementLimiterCount(strings.Join([]string{loginLimit, ip}, Delimiter), loginMaxCount)
 }
 
 func IncrementRegisterLimiterCount(ip string) bool {
-	baseSlice := []string{registerLimit, ip}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.SetNX(Ctx, key, 0, limiterTime)
-	result := Rdb.Get(Ctx, key).Val()
-	count, err := strconv.Atoi(result)
-	if err != nil {
-		return false
-	}
-	if count < registerMaxCount {
-		Rdb.Incr(Ctx, key)
-		return true
-	}
-	return false
+	return incrementLimiterCount(strings.Join([]string{registerLimit, ip}, Delimiter), registerMaxCount)
 }
 
 func IncrementCommentLimiterCount(ip string) bool {
-	baseSlice := []string{commentLimit, ip}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.SetNX(Ctx, key, 0, limiterTime)
-	result := Rdb.Get(Ctx, key).Val()
-	count, err := strconv.Atoi(result)
-	if err != nil {
-		return false
-	}
-	if count < commentMaxCount {
-		Rdb.Incr(Ctx, key)
-		return true
-	}
-	return false
+	return incrementLimiterCount(strings.Join([]string{commentLimit, ip}, Delimiter), commentMaxCount)
 }
 
 func IncrementUploadLimiterCount(ip string) bool {
-	baseSlice := []string{uploadLimit, ip}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.SetNX(Ctx, key, 0, limiterTime)
-	result := Rdb.Get(Ctx, key).Val()
-	count, err := strconv.Atoi(result)
-	if err != nil {
-		return false
-	}
-	if count < uploadMaxCount {
-		Rdb.Incr(Ctx, key)
-		return true
-	}
-	return false
+	return incrementLimiterCount(strings.Join([]string{uploadLimit, ip}, Delimiter), uploadMaxCount)
 }
 
 func IncrementMessageLimiterCount(ip string) bool {
-	baseSlice := []string{messageLimit, ip}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.SetNX(Ctx, key, 0, limiterTime)
-	result := Rdb.Get(Ctx, key).Val()
-	count, err := strconv.Atoi(result)
-	if err != nil {
-		return false
-	}
-	if count < messageMaxCount {
-		Rdb.Incr(Ctx, key)
-		return true
-	}
-	return false
+	return incrementLimiterCount(strings.Join([]string{messageLimit, ip}, Delimiter), messageMaxCount)
 }

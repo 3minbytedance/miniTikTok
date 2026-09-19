@@ -1,0 +1,23 @@
+# 版本控制与构建产物
+.git
+.gitignore
+build/
+.trae/
+**/*.log
+
+# 运行期数据
+log/
+run/
+tmp/
+*.db
+*.sqlite
+
+# 容器文件自身（构建时不需要）
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# 本地脚本/文档（镜像内不需要）
+scripts/
+*.md
+README*

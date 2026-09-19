@@ -1,0 +1,85 @@
+# 容器部署专用配置：基础设施地址使用 docker-compose 的服务名。
+# 由容器环境变量 DOUYIN_CONFIG=config/app.docker.yaml 选中。
+name: "douyin"
+node: 1
+mode: "local"
+port: 8080
+version: "v0.0.1"
+log:
+  level: "info"
+  filename: "./log/douyin.log"
+  max_size: 1000
+  max_age: 3600
+  max_backups: 5
+
+# 容器内默认使用本地文件存储（video 写入、api 通过 /static/ 读取，共享 media 卷）
+oss:
+  enabled: false
+  bucket_url: ""
+  ci_bucket_url: ""
+  secret_id: ""
+  secret_key: ""
+  session_token: ""
+  region: ""
+  bucket: ""
+  local_fallback_path: "./tmp"
+  static_url_prefix: "/static"
+
+# 不配置 collector_addr：链路追踪导出关闭，指标仍由 api 的 /metrics 暴露
+observability:
+  service_name: "douyin"
+  collector_addr: ""
+  metrics_enabled: true
+  trace_enabled: true
+
+local:
+  mysql:
+    address: "mysql"
+    port: 3306
+    username: doushen
+    password: doushen123
+    database: doushen
+    timeout: 10
+  redis:
+    address: "redis"
+    port: 6379
+    password: "redis123"
+    comment_db: 0
+    pool_size: 30
+    min_idle_conns: 10
+    expire_time: 1800
+  kafka:
+    address: "kafka"
+    port: 9092
+  mongo:
+    address: "mongo"
+    port: 27017
+    username: admin
+    password: mongo123
+    db: admin
+
+remote:
+  mysql:
+    address: "mysql"
+    port: 3306
+    username: doushen
+    password: doushen123
+    database: doushen
+    timeout: 10
+  redis:
+    address: "redis"
+    port: 6379
+    password: "redis123"
+    comment_db: 0
+    pool_size: 30
+    min_idle_conns: 10
+    expire_time: 1800
+  kafka:
+    address: "kafka"
+    port: 9092
+  mongo:
+    address: "mongo"
+    port: 27017
+    username: admin
+    password: mongo123
+    db: admin

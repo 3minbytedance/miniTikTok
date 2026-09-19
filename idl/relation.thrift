@@ -66,14 +66,3 @@ struct IsFriendRequest {
     1: i64 actor_id, //当前操作id
     2: i64 user_id,  //对方用户id
 }
-
-service RelationService {
-    RelationActionResponse RelationAction(1: RelationActionRequest Request),//关注操作
-    FollowListResponse GetFollowList(1: FollowListRequest Request),//关注列表
-    FollowerListResponse GetFollowerList(1: FollowerListRequest Request),//粉丝列表
-    FriendListResponse GetFriendList(1: FriendListRequest Request),//好友列表
-    i32 GetFollowListCount(1: i64 user_id),//查询某个用户的关注数
-    i32 GetFollowerListCount(1: i64 user_id),//查询某个用户的粉丝数
-    bool IsFollowing(1: IsFollowingRequest Request),//判断是否关注
-    bool IsFriend(1: IsFriendRequest Request),//判断是否为互关
-}

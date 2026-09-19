@@ -54,10 +54,3 @@ struct GetWorkCountRequest{
 struct GetWorkCountResponse{
     1: i32 work_count, //作品数数量
 }
-
-service VideoService {
-    VideoFeedResponse VideoFeed(1: VideoFeedRequest Request),
-    PublishVideoResponse PublishVideo(1: PublishVideoRequest Request),
-    PublishVideoListResponse GetPublishVideoList(1: PublishVideoListRequest Request),
-    i32 GetWorkCount(1:i64 user_id)
-}

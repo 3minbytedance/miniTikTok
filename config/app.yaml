@@ -9,6 +9,27 @@ log:
   max_size: 1000
   max_age: 3600
   max_backups: 5
+
+# 对象存储：enabled=false 时降级到本地文件存储（通过 api 网关 /static/ 访问）
+oss:
+  enabled: false
+  bucket_url: "https://tiktok-1319971229.cos.ap-nanjing.myqcloud.com/"
+  ci_bucket_url: "https://tiktok-1319971229.ci.ap-nanjing.myqcloud.com"
+  secret_id: ""
+  secret_key: ""
+  session_token: ""
+  region: "ap-nanjing"
+  bucket: "tiktok-1319971229"
+  local_fallback_path: "./tmp"
+  static_url_prefix: "/static"
+
+# 可观测性
+observability:
+  service_name: "douyin"
+  collector_addr: ""
+  metrics_enabled: true
+  trace_enabled: true
+
 local:
   mysql:
     address: "127.0.0.1"
@@ -34,15 +55,6 @@ local:
     username: admin
     password: w5W7PNXYBzLBGHRx
     db: admin
-  rocketmq:
-    address: "127.0.0.1"
-    port: 9876
-  graphDB:
-    address: "127.0.0.1"
-    port: 9669
-    username: admin
-    password: w5W7PNXYBzLBGHRx
-    namespace : test
 
 remote:
   mysql:
@@ -69,12 +81,3 @@ remote:
     username: admin
     password: w5W7PNXYBzLBGHRx
     db: admin
-  rocketmq:
-    address: "127.0.0.1"
-    port: 9876
-  graphDB:
-    address: "127.0.0.1"
-    port: 9669
-    username: admin
-    password: w5W7PNXYBzLBGHRx
-    namespace: test

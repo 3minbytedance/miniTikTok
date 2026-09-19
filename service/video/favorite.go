@@ -1,0 +1,106 @@
+package main
+
+import (
+	"context"
+
+	"douyin/common"
+	"douyin/dal/mysql"
+	"douyin/kitex_gen/favorite"
+	"douyin/kitex_gen/video"
+	"douyin/mw/redis"
+	"douyin/observability"
+)
+
+// FavoriteAction 点赞/取消：先写 MySQL，成功后失效点赞计数与用户点赞集合。
+func (v *VideoAppServiceImpl) FavoriteAction(ctx context.Context, req *favorite.FavoriteActionRequest) (*favorite.FavoriteActionResponse, error) {
+	resp := &favorite.FavoriteActionResponse{}
+	uid, vid := uint(req.UserId), uint(req.VideoId)
+
+	authorId, found := mysql.GetAuthorIdByVideoId(vid)
+	if !found {
+		resp.StatusCode = common.CodeInvalidParam
+		resp.StatusMsg = common.MapErrMsg(common.CodeInvalidParam)
+		return resp, nil
+	}
+
+	switch req.ActionType {
+	case 1: // 点赞
+		if mysql.IsFavorite(uid, vid) {
+			resp.StatusCode = common.CodeFavoriteRepeat
+			resp.StatusMsg = common.MapErrMsg(common.CodeFavoriteRepeat)
+			return resp, nil
+		}
+		if !mysql.AddUserFavorite(uid, vid) {
+			resp.StatusCode = common.CodeDBError
+			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
+			return resp, nil
+		}
+		common.AddToIsFavoriteBloom(uid, vid)
+	case 2: // 取消点赞
+		if !mysql.IsFavorite(uid, vid) {
+			resp.StatusCode = common.CodeFavoriteRepeat
+			resp.StatusMsg = common.MapErrMsg(common.CodeFavoriteRepeat)
+			return resp, nil
+		}
+		if err := mysql.DeleteUserFavorite(uid, vid); err != nil {
+			resp.StatusCode = common.CodeDBError
+			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
+			return resp, nil
+		}
+	default:
+		resp.StatusCode = common.CodeInvalidParam
+		resp.StatusMsg = common.MapErrMsg(common.CodeInvalidParam)
+		return resp, nil
+	}
+
+	redis.InvalidateFavorite(ctx, uid, vid, authorId)
+	resp.StatusCode = common.CodeSuccess
+	return resp, nil
+}
+
+// GetFavoriteList 用户点赞视频列表。
+func (v *VideoAppServiceImpl) GetFavoriteList(ctx context.Context, req *favorite.FavoriteListRequest) (*favorite.FavoriteListResponse, error) {
+	resp := &favorite.FavoriteListResponse{StatusCode: common.CodeSuccess}
+	ids, err := redis.GetUserFavoriteSet(ctx, uint(req.UserId))
+	if err != nil {
+		observability.Logger(ctx).Error("get favorite set failed", errField(err))
+		resp.StatusCode = common.CodeServerBusy
+		resp.StatusMsg = common.MapErrMsg(common.CodeServerBusy)
+		return resp, nil
+	}
+	actorId := uint(req.ActionId)
+	list := make([]*video.Video, 0, len(ids))
+	for _, id := range ids {
+		mv, ok := mysql.FindVideoByVideoId(id)
+		if !ok {
+			continue
+		}
+		list = append(list, v.buildVideo(ctx, &mv, actorId))
+	}
+	resp.VideoList = list
+	return resp, nil
+}
+
+func (v *VideoAppServiceImpl) GetVideoFavoriteCount(ctx context.Context, videoId int64) (int32, error) {
+	return redis.GetVideoFavoriteCount(ctx, uint(videoId))
+}
+
+func (v *VideoAppServiceImpl) GetUserFavoriteCount(ctx context.Context, userId int64) (int32, error) {
+	return redis.GetUserFavoriteCount(ctx, uint(userId))
+}
+
+func (v *VideoAppServiceImpl) GetUserTotalFavoritedCount(ctx context.Context, userId int64) (int32, error) {
+	return redis.GetUserTotalFavoritedCount(ctx, uint(userId))
+}
+
+func (v *VideoAppServiceImpl) IsUserFavorite(ctx context.Context, req *favorite.IsUserFavoriteRequest) (bool, error) {
+	return v.isFavorite(ctx, uint(req.UserId), uint(req.VideoId))
+}
+
+// isFavorite Bloom 先判否，再查缓存/DB。
+func (v *VideoAppServiceImpl) isFavorite(ctx context.Context, uid, videoId uint) (bool, error) {
+	if !common.TestIsFavoriteBloom(uid, videoId) {
+		return false, nil
+	}
+	return redis.IsUserFavorite(ctx, uid, videoId)
+}

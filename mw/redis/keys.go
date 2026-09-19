@@ -1,239 +1,74 @@
 package redis
 
 import (
-	"go.uber.org/zap"
 	"strconv"
 	"strings"
-	"time"
 )
 
+// Delimiter redis key 分隔符
 const Delimiter = ":"
 
+func buildKey(parts ...interface{}) string {
+	ss := make([]string, 0, len(parts))
+	for _, p := range parts {
+		switch v := p.(type) {
+		case string:
+			ss = append(ss, v)
+		case uint:
+			ss = append(ss, strconv.FormatUint(uint64(v), 10))
+		case int64:
+			ss = append(ss, strconv.FormatInt(v, 10))
+		case int:
+			ss = append(ss, strconv.Itoa(v))
+		default:
+			ss = append(ss, strconv.FormatInt(int64(toInt64(p)), 10))
+		}
+	}
+	return strings.Join(ss, Delimiter)
+}
+
+func toInt64(v interface{}) int64 {
+	switch n := v.(type) {
+	case uint:
+		return int64(n)
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	}
+	return 0
+}
+
+// key 前缀
 const (
-	//VideoKey hash 类型 video:videoId
-	VideoKey = "video"
-
-	CommentCountField = "commentCount"
-
-	VideoFavoritedCountField = "favoritedCount" // 视频被点赞总数
+	tokenKey        = "token"
+	userNameKey     = "uname"  // uname:{uid} 用户名
+	followSetKey    = "follow" // follow:{uid} 关注集合
+	followerSetKey  = "follower"
+	followCountKey  = "followcnt"
+	followerCntKey  = "followercnt"
+	feedKey         = "videos" // feed ZSet
+	workCountKey    = "workcnt"
+	commentCountKey = "vcmtcnt"
+	videoFavCount   = "vfav"    // 视频点赞数
+	userFavSet      = "ufavset" // 用户点赞视频集合
+	userFavCount    = "ufavcnt" // 用户点赞数
+	userTotalFav    = "utfav"   // 作者获赞总数
+	lockPrefix      = "lock"
 )
 
-const (
-	//UserKey hash 类型 user:userId
-	UserKey = "user"
-
-	WorkCountField     = "workCount"      //作品数
-	NameField          = "name"           //用户名
-	TotalFavoriteField = "totalFavorited" //发布视频的总获赞数量
-	FavoriteCountFiled = "favoriteCount"  //喜欢数
-
-	// FavoriteList  set类型
-	FavoriteList = "favoriteList" //喜欢视频列表
-
-	// FollowList and FollowerList  set类型
-	FollowList   = "followList"   //关注列表
-	FollowerList = "followerList" //粉丝列表
-)
-
-const VideoList = "videos"
-
-const TokenKey = "token"
-
-const MonthlyActive = "monthlyActive"
-
-const (
-	Lock               = "lock"
-	FollowAction       = "followAction"
-	RetryTime          = 30 * time.Millisecond
-	KeyExistsAndNotSet = 0
-	KeyUpdated         = 1
-	KeyNotExistsInBoth = 2
-)
-
-func IsExistUserField(userId uint, field string) bool {
-	baseSlice := []string{UserKey, strconv.Itoa(int(userId))}
-	key := strings.Join(baseSlice, Delimiter)
-	exists, err := Rdb.HExists(Ctx, key, field).Result()
-	if err != nil {
-		zap.L().Error("redis isExistVideo 连接失败")
-		return false
-	}
-	return exists
+func tokenK(uid uint) string     { return buildKey(tokenKey, uid) }
+func userNameK(uid uint) string  { return buildKey(userNameKey, uid) }
+func followSetK(uid uint) string { return buildKey(followSetKey, uid) }
+func followerSetK(uid uint) string {
+	return buildKey(followerSetKey, uid)
 }
-
-func IsExistVideoField(videoId uint, field string) bool {
-	baseSlice := []string{VideoKey, strconv.Itoa(int(videoId))}
-	key := strings.Join(baseSlice, Delimiter)
-	exists, err := Rdb.HExists(Ctx, key, field).Result()
-	if err != nil {
-		zap.L().Error("redis isExistVideo 连接失败")
-		return false
-	}
-	return exists
-}
-
-// IsExistUserSetField 判断set类型的是否存在
-func IsExistUserSetField(userId uint, field string) bool {
-	baseSlice := []string{field, strconv.Itoa(int(userId))}
-	key := strings.Join(baseSlice, Delimiter)
-	exists, err := Rdb.Exists(Ctx, key).Result()
-	if err != nil {
-		zap.L().Error("redis isExistVideo 连接失败")
-		return false
-	}
-	return exists != 0
-}
-
-// DelVideoHashField 根据参数删除video Hash field
-func DelVideoHashField(videoId uint, field string) {
-	baseSlice := []string{VideoKey, strconv.Itoa(int(videoId))}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.HDel(Ctx, key, field)
-}
-
-// DelUserHashField 根据参数删除user Hash field
-func DelUserHashField(userId uint, field string) {
-	baseSlice := []string{UserKey, strconv.Itoa(int(userId))}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.HDel(Ctx, key, field)
-}
-
-// DelVideoKey 删除videos ZSet key
-func DelVideoKey() {
-	key := VideoList
-	Rdb.Del(Ctx, key)
-}
-
-func AcquireCommentLock(videoId uint) bool {
-	baseSlice := []string{CommentCountField, strconv.Itoa(int(videoId)), Lock}
-	key := strings.Join(baseSlice, Delimiter)
-	result, err := Rdb.SetNX(Ctx, key, 1, 2*time.Second).Result()
-	if err != nil {
-		zap.L().Error("获取锁失败", zap.Error(err))
-		return false
-	}
-	return result
-}
-
-func ReleaseCommentLock(videoId uint) {
-	baseSlice := []string{CommentCountField, strconv.Itoa(int(videoId)), Lock}
-	key := strings.Join(baseSlice, Delimiter)
-	Rdb.Del(Ctx, key)
-}
-
-func AcquireUserLock(userId uint, field string) bool {
-	var key string
-	var baseSlice []string
-	switch field {
-	case NameField:
-		baseSlice = []string{NameField, strconv.Itoa(int(userId)), Lock}
-	case WorkCountField:
-		baseSlice = []string{WorkCountField, strconv.Itoa(int(userId)), Lock}
-	default:
-		return false
-	}
-	key = strings.Join(baseSlice, Delimiter)
-	result, err := Rdb.SetNX(Ctx, key, 1, 2*time.Second).Result()
-	if err != nil {
-		zap.L().Error("获取锁失败", zap.Error(err))
-		return false
-	}
-	return result
-}
-
-func ReleaseUserLock(userId uint, field string) {
-	var key string
-	var baseSlice []string
-	switch field {
-	case NameField:
-		baseSlice = []string{NameField, strconv.Itoa(int(userId)), Lock}
-	case WorkCountField:
-		baseSlice = []string{WorkCountField, strconv.Itoa(int(userId)), Lock}
-	default:
-		return
-	}
-	key = strings.Join(baseSlice, Delimiter)
-	Rdb.Del(Ctx, key)
-}
-
-func AcquireFavoriteLock(id uint, field string) bool {
-	var key string
-	var baseSlice []string
-	switch field {
-	case FavoriteList:
-		baseSlice = []string{FavoriteList, strconv.Itoa(int(id)), Lock}
-	case VideoFavoritedCountField:
-		baseSlice = []string{VideoFavoritedCountField, strconv.Itoa(int(id)), Lock}
-	case TotalFavoriteField:
-		baseSlice = []string{TotalFavoriteField, strconv.Itoa(int(id)), Lock}
-	case FavoriteCountFiled:
-		baseSlice = []string{FavoriteCountFiled, strconv.Itoa(int(id)), Lock}
-	default:
-		return false
-	}
-	key = strings.Join(baseSlice, Delimiter)
-	result, err := Rdb.SetNX(Ctx, key, 1, 2*time.Second).Result()
-	if err != nil {
-		zap.L().Error("获取锁失败", zap.Error(err))
-		return false
-	}
-	return result
-}
-
-func ReleaseFavoriteLock(id uint, field string) {
-	var key string
-	var baseSlice []string
-	switch field {
-	case FavoriteList:
-		baseSlice = []string{FavoriteList, strconv.Itoa(int(id)), Lock}
-	case VideoFavoritedCountField:
-		baseSlice = []string{VideoFavoritedCountField, strconv.Itoa(int(id)), Lock}
-	case TotalFavoriteField:
-		baseSlice = []string{TotalFavoriteField, strconv.Itoa(int(id)), Lock}
-	case FavoriteCountFiled:
-		baseSlice = []string{FavoriteCountFiled, strconv.Itoa(int(id)), Lock}
-	default:
-		return
-	}
-	key = strings.Join(baseSlice, Delimiter)
-	Rdb.Del(Ctx, key)
-}
-
-func AcquireRelationLock(id uint, field string) bool {
-	var key string
-	var baseSlice []string
-	switch field {
-	case FollowList:
-		baseSlice = []string{FollowList, strconv.Itoa(int(id)), Lock}
-	case FollowerList:
-		baseSlice = []string{FollowerList, strconv.Itoa(int(id)), Lock}
-	case FollowAction:
-		baseSlice = []string{FollowAction, strconv.Itoa(int(id)), Lock}
-	default:
-		return false
-	}
-	key = strings.Join(baseSlice, Delimiter)
-	result, err := Rdb.SetNX(Ctx, key, 1, 2*time.Second).Result()
-	if err != nil {
-		zap.L().Error("获取锁失败", zap.Error(err))
-		return false
-	}
-	return result
-}
-
-func ReleaseRelationLock(id uint, field string) {
-	var key string
-	var baseSlice []string
-	switch field {
-	case FollowList:
-		baseSlice = []string{FollowList, strconv.Itoa(int(id)), Lock}
-	case FollowerList:
-		baseSlice = []string{FollowerList, strconv.Itoa(int(id)), Lock}
-	case FollowAction:
-		baseSlice = []string{FollowAction, strconv.Itoa(int(id)), Lock}
-	default:
-		return
-	}
-	key = strings.Join(baseSlice, Delimiter)
-	Rdb.Del(Ctx, key)
-}
+func followCountK(uid uint) string  { return buildKey(followCountKey, uid) }
+func followerCntK(uid uint) string  { return buildKey(followerCntKey, uid) }
+func workCountK(uid uint) string    { return buildKey(workCountKey, uid) }
+func commentCountK(vid uint) string { return buildKey(commentCountKey, vid) }
+func videoFavK(vid uint) string     { return buildKey(videoFavCount, vid) }
+func userFavSetK(uid uint) string   { return buildKey(userFavSet, uid) }
+func userFavCntK(uid uint) string   { return buildKey(userFavCount, uid) }
+func userTotalFavK(uid uint) string { return buildKey(userTotalFav, uid) }
+func lockK(key string) string       { return buildKey(lockPrefix, key) }

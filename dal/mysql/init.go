@@ -2,13 +2,15 @@ package mysql
 
 import (
 	"douyin/config"
+	"douyin/dal/model"
 	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"log"
 	"os"
 	"time"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
@@ -41,12 +43,18 @@ func Init(appConfig *config.AppConfig) (err error) {
 
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: mysqlLog, PrepareStmt: true})
 	if err != nil {
-		log.Println(dsn)
-		log.Fatal("connect to mysql failed:", err)
+		return fmt.Errorf("connect to mysql failed: %w", err)
 	}
-	//err = DB.AutoMigrate(&models.User{})
-	//if err != nil {
-	//	return
-	//}
+	// 启动时自动建表/补列（幂等，仅增量迁移）
+	if err := DB.AutoMigrate(
+		&model.User{},
+		&model.UserInfo{},
+		&model.Video{},
+		&model.Comment{},
+		&model.Favorite{},
+		&model.UserFollow{},
+	); err != nil {
+		return fmt.Errorf("auto migrate failed: %w", err)
+	}
 	return nil
 }

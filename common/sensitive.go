@@ -18,6 +18,9 @@ func InitSensitiveFilter() (err error) {
 }
 
 func ReplaceWord(word string) string {
-	//print(sensitiveFilter.Replace(word, '*'))
+	if sensitiveFilter == nil {
+		zap.L().Warn("sensitive filter is not initialized")
+		return word
+	}
 	return sensitiveFilter.Replace(word, '*')
 }

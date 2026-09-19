@@ -17,5 +17,9 @@ func GetCurrentUserID(rc *app.RequestContext) (userID uint, err error) {
 		return
 	}
 	userID, ok = uid.(uint)
+	if !ok {
+		err = errors.New("user id type assertion failed")
+		return
+	}
 	return
 }

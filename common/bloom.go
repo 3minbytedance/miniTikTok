@@ -71,7 +71,7 @@ func LoadUsernamesToBloomFilter() {
 		AddToUserBloom(username)
 	}
 
-	zap.L().Info("Loaded %d usernames to the bloom filter.\n", zap.Int("size", len(usernames)))
+	zap.L().Info("Loaded usernames to the bloom filter.", zap.Int("size", len(usernames)))
 }
 
 func AddToCommentBloom(data string) {
@@ -84,11 +84,13 @@ func TestCommentBloom(data string) bool {
 
 func LoadCommentVideoIdToBloomFilter() {
 	var videoIdList []string
-	mysql.DB.Model(&model.Comment{}).Distinct().Pluck("video_id", &videoIdList)
+	if err := mysql.DB.Model(&model.Comment{}).Distinct().Pluck("video_id", &videoIdList).Error; err != nil {
+		log.Fatal("Failed to retrieve comment video ids from database:", err)
+	}
 	for _, videoId := range videoIdList {
 		AddToCommentBloom(videoId)
 	}
-	zap.L().Info("Loaded %d comments to the bloom filter.\n", zap.Int("size", len(videoIdList)))
+	zap.L().Info("Loaded comments to the bloom filter.", zap.Int("size", len(videoIdList)))
 }
 
 func AddToWorkCountBloom(data string) {
@@ -101,11 +103,13 @@ func TestWorkCountBloom(data string) bool {
 
 func LoadWorkCountToBloomFilter() {
 	var authorIdList []string
-	mysql.DB.Model(&model.Video{}).Distinct().Pluck("author_id", &authorIdList)
+	if err := mysql.DB.Model(&model.Video{}).Distinct().Pluck("author_id", &authorIdList).Error; err != nil {
+		log.Fatal("Failed to retrieve author ids from database:", err)
+	}
 	for _, authorId := range authorIdList {
 		AddToWorkCountBloom(authorId)
 	}
-	zap.L().Info("Loaded %d authors from video to the bloom filter.\n", zap.Int("size", len(authorIdList)))
+	zap.L().Info("Loaded authors from video to the bloom filter.", zap.Int("size", len(authorIdList)))
 }
 
 func AddToIsFavoriteBloom(userId, videoId uint) {
@@ -120,11 +124,13 @@ func TestIsFavoriteBloom(userId, videoId uint) bool {
 
 func LoadIsFavoriteToBloomFilter() {
 	var favoriteList []model.Favorite
-	mysql.DB.Model(&model.Favorite{}).Find(&favoriteList)
+	if err := mysql.DB.Model(&model.Favorite{}).Find(&favoriteList).Error; err != nil {
+		log.Fatal("Failed to retrieve favorites from database:", err)
+	}
 	for _, favorite := range favoriteList {
 		AddToIsFavoriteBloom(favorite.UserId, favorite.VideoId)
 	}
-	zap.L().Info("Loaded %d from favorite to the bloom filter.\n", zap.Int("size", len(favoriteList)))
+	zap.L().Info("Loaded favorites to the bloom filter.", zap.Int("size", len(favoriteList)))
 }
 
 func AddToFavoriteVideoIdBloom(data string) {
@@ -137,11 +143,13 @@ func TestFavoriteVideoIdBloom(data string) bool {
 
 func LoadFavoriteVideoIdToBloomFilter() {
 	var videoIdList []string
-	mysql.DB.Model(&model.Favorite{}).Distinct().Pluck("video_id", &videoIdList)
+	if err := mysql.DB.Model(&model.Favorite{}).Distinct().Pluck("video_id", &videoIdList).Error; err != nil {
+		log.Fatal("Failed to retrieve favorite video ids from database:", err)
+	}
 	for _, videoId := range videoIdList {
 		AddToFavoriteVideoIdBloom(videoId)
 	}
-	zap.L().Info("Loaded %d video from favorite to the bloom filter.\n", zap.Int("size", len(videoIdList)))
+	zap.L().Info("Loaded video from favorite to the bloom filter.", zap.Int("size", len(videoIdList)))
 }
 
 func AddToRelationFollowIdBloom(data string) {
@@ -154,11 +162,13 @@ func TestRelationFollowIdBloom(data string) bool {
 
 func LoadRelationFollowIdToBloomFilter() {
 	var followIdList []string
-	mysql.DB.Model(&model.UserFollow{}).Distinct().Pluck("user_id", &followIdList)
+	if err := mysql.DB.Model(&model.UserFollow{}).Distinct().Pluck("user_id", &followIdList).Error; err != nil {
+		log.Fatal("Failed to retrieve follow ids from database:", err)
+	}
 	for _, followId := range followIdList {
 		AddToRelationFollowIdBloom(followId)
 	}
-	zap.L().Info("Loaded %d followId from follow to the bloom filter.\n", zap.Int("size", len(followIdList)))
+	zap.L().Info("Loaded followId from follow to the bloom filter.", zap.Int("size", len(followIdList)))
 }
 
 func AddToRelationFollowerIdBloom(data string) {
@@ -171,9 +181,11 @@ func TestRelationFollowerIdBloom(data string) bool {
 
 func LoadRelationFollowerIdToBloomFilter() {
 	var followerIdList []string
-	mysql.DB.Model(&model.UserFollow{}).Distinct().Pluck("follow_id", &followerIdList)
+	if err := mysql.DB.Model(&model.UserFollow{}).Distinct().Pluck("follow_id", &followerIdList).Error; err != nil {
+		log.Fatal("Failed to retrieve follower ids from database:", err)
+	}
 	for _, followerId := range followerIdList {
 		AddToRelationFollowerIdBloom(followerId)
 	}
-	zap.L().Info("Loaded %d follower from follow to the bloom filter.\n", zap.Int("size", len(followerIdList)))
+	zap.L().Info("Loaded follower from follow to the bloom filter.", zap.Int("size", len(followerIdList)))
 }

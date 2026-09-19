@@ -1,15 +1,16 @@
 package common
 
 import (
-	"github.com/dgrijalva/jwt-go"
-	"go.uber.org/zap"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"go.uber.org/zap"
 )
 
 type Claims struct {
 	ID       uint   `json:"id"`
 	Username string `json:"username"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 // 签名密钥
@@ -25,9 +26,8 @@ func GenerateToken(userId uint, username string) string {
 	claims := Claims{
 		ID:       userId,
 		Username: username,
-		StandardClaims: jwt.StandardClaims{
-			//ExpiresAt: expireTime,
-			IssuedAt: nowTime.Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt: jwt.NewNumericDate(nowTime),
 			Issuer:   "DouShen",
 		},
 	}

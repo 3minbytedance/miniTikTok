@@ -2,104 +2,74 @@ package favorite
 
 import (
 	"context"
-	"douyin/common"
-	"douyin/constant"
-	"douyin/kitex_gen/favorite"
-	"douyin/kitex_gen/favorite/favoriteservice"
-	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/kitex/client"
-	"github.com/cloudwego/kitex/pkg/rpcinfo"
-	"github.com/kitex-contrib/obs-opentelemetry/tracing"
-	etcd "github.com/kitex-contrib/registry-etcd"
-	"go.uber.org/zap"
-	"log"
 	"net/http"
 	"strconv"
+
+	"douyin/common"
+	"douyin/kitex_gen/favorite"
+	"douyin/service/api/rpc"
+
+	"github.com/cloudwego/hertz/pkg/app"
 )
 
-var favoriteClient favoriteservice.Client
-
-func init() {
-	// Etcd 服务发现
-	r, err := etcd.NewEtcdResolver([]string{constant.EtcdAddr})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	favoriteClient, err = favoriteservice.NewClient(
-		constant.FavoriteServiceName,
-		client.WithResolver(r),
-		client.WithSuite(tracing.NewClientSuite()),
-		// Please keep the same as provider.WithServiceName
-		client.WithClientBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: constant.FavoriteServiceName}),
-		client.WithMuxConnection(2),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-// Action 点赞取消赞的操作
 func Action(ctx context.Context, c *app.RequestContext) {
-	fromUserId, err := common.GetCurrentUserID(c)
-
-	videoIdStr := c.Query("video_id")
-	videoId, err := strconv.Atoi(videoIdStr)
+	userId, err := common.GetCurrentUserID(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, favorite.FavoriteActionResponse{
+		c.JSON(http.StatusUnauthorized, &favorite.FavoriteActionResponse{
+			StatusCode: common.CodeInvalidToken,
+			StatusMsg:  common.MapErrMsg(common.CodeInvalidToken),
+		})
+		return
+	}
+	videoId, err := strconv.ParseInt(c.Query("video_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, &favorite.FavoriteActionResponse{
 			StatusCode: common.CodeInvalidParam,
 			StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
 		})
 		return
 	}
-	actionTypeStr := c.Query("action_type")
-	actionType, err := strconv.Atoi(actionTypeStr)
+	actionType, err := strconv.Atoi(c.Query("action_type"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, favorite.FavoriteActionResponse{
+		c.JSON(http.StatusBadRequest, &favorite.FavoriteActionResponse{
 			StatusCode: common.CodeInvalidParam,
 			StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
 		})
 		return
 	}
-	req := &favorite.FavoriteActionRequest{
-		UserId:     int64(fromUserId),
-		VideoId:    int64(videoId),
+	resp, err := rpc.Video.FavoriteAction(ctx, &favorite.FavoriteActionRequest{
+		UserId:     int64(userId),
+		VideoId:    videoId,
 		ActionType: int32(actionType),
-	}
-
-	resp, err := favoriteClient.FavoriteAction(ctx, req)
-	if err != nil {
-		zap.L().Error("FavoriteAction err.", zap.Error(err))
-		c.JSON(http.StatusOK, resp)
+	})
+	if err != nil || resp == nil {
+		c.JSON(http.StatusOK, &favorite.FavoriteActionResponse{
+			StatusCode: common.CodeServerBusy,
+			StatusMsg:  common.MapErrMsg(common.CodeServerBusy),
+		})
 		return
 	}
 	c.JSON(http.StatusOK, resp)
 }
 
-// List all users have same favorite video list
 func List(ctx context.Context, c *app.RequestContext) {
-	fromUserId, err := common.GetCurrentUserID(c)
-	toUserIdStr := c.Query("user_id")
-	toUserId, err := strconv.Atoi(toUserIdStr)
+	actorId, _ := common.GetCurrentUserID(c)
+	userId, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, favorite.FavoriteListResponse{
+		c.JSON(http.StatusBadRequest, &favorite.FavoriteListResponse{
 			StatusCode: common.CodeInvalidParam,
 			StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
 		})
 		return
 	}
-
-	req := &favorite.FavoriteListRequest{
-		ActionId: int64(fromUserId),
-		UserId:   int64(toUserId),
-	}
-
-	resp, err := favoriteClient.GetFavoriteList(ctx, req)
-	if err != nil {
-		zap.L().Error("GetFavoriteList err.", zap.Error(err))
-		c.JSON(http.StatusOK, favorite.FavoriteListResponse{
-			StatusCode: resp.StatusCode,
-			StatusMsg:  common.MapErrMsg(resp.StatusCode),
+	resp, err := rpc.Video.GetFavoriteList(ctx, &favorite.FavoriteListRequest{
+		ActionId: int64(actorId),
+		UserId:   userId,
+	})
+	if err != nil || resp == nil {
+		c.JSON(http.StatusOK, &favorite.FavoriteListResponse{
+			StatusCode: common.CodeServerBusy,
+			StatusMsg:  common.MapErrMsg(common.CodeServerBusy),
 		})
 		return
 	}

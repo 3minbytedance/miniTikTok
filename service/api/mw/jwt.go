@@ -2,10 +2,12 @@ package mw
 
 import (
 	"context"
+	"net/http"
+
 	"douyin/common"
 	"douyin/mw/redis"
+
 	"github.com/cloudwego/hertz/pkg/app"
-	"net/http"
 )
 
 type Response struct {
@@ -13,69 +15,35 @@ type Response struct {
 	StatusMsg  string `json:"status_msg,omitempty"`
 }
 
-// Auth 鉴权中间件
+// Auth 必须登录：解析 token 并校验 Redis 中的会话，续期后放行。
 func Auth() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		token := c.Query("token")
-		// 解析token
-		claims, err := common.ParseToken(token)
+		claims, err := common.ParseToken(c.Query("token"))
 		if err != nil {
-			// token有误（含len(token)=0的情况），阻止后面函数执行
 			c.Abort()
-			c.JSON(http.StatusUnauthorized, Response{
-				StatusCode: common.CodeInvalidToken,
-				StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
-			})
+			c.JSON(http.StatusUnauthorized, Response{StatusCode: common.CodeInvalidToken, StatusMsg: common.MapErrMsg(common.CodeInvalidToken)})
 			return
 		}
-		// 查看token是否在redis中, 若在，给token续期, 若不在，则阻止后面函数执行
-		exist := redis.TokenIsExisted(claims.ID)
-		if !exist {
-			// token有误，阻止后面函数执行
+		if !redis.TokenIsExisted(claims.ID) {
 			c.Abort()
-			c.JSON(http.StatusOK, Response{
-				StatusCode: common.CodeInvalidToken,
-				StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
-			})
+			c.JSON(http.StatusOK, Response{StatusCode: common.CodeInvalidToken, StatusMsg: common.MapErrMsg(common.CodeInvalidToken)})
 			return
 		}
-		go func(id uint) {
-			// 给token续期，并标记位活跃
-			redis.SetToken(id, token)
-			redis.SetMonthlyActiveBit(id)
-		}(claims.ID)
-
+		redis.SetToken(claims.ID, c.Query("token"))
 		c.Set(common.ContextUserIDKey, claims.ID)
 		c.Next(ctx)
 	}
 }
 
-// AuthWithoutLogin 未登录情况，若携带token,解析用户id放入context;如果没有携带，则将用户id默认为0
+// AuthWithoutLogin 可选登录：携带合法 token 则注入用户 id，否则以游客（id=0）放行。
 func AuthWithoutLogin() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		token := c.Query("token")
 		var userId uint
 		var tokenValid bool
-		claims, err := common.ParseToken(token)
-		if err != nil {
-			// token有误或token为空，未登录
-			tokenValid = false
-			userId = 0
-		} else {
-			// 查看token是否在redis中, 若在，则返回用户id, 并且给token续期, 若不在，则将userID设为0
-			exist := redis.TokenIsExisted(claims.ID)
-			if !exist {
-				// token有误，设置userId为0,tokenValid为false
-				userId = 0
-				tokenValid = false
-			} else {
-				userId = claims.ID
-				go func(id uint) {
-					// 给token续期
-					redis.SetToken(id, token)
-				}(userId)
-				tokenValid = true
-			}
+		if claims, err := common.ParseToken(c.Query("token")); err == nil && redis.TokenIsExisted(claims.ID) {
+			userId = claims.ID
+			tokenValid = true
+			redis.SetToken(claims.ID, c.Query("token"))
 		}
 		c.Set(common.TokenValid, tokenValid)
 		c.Set(common.ContextUserIDKey, userId)
@@ -83,37 +51,22 @@ func AuthWithoutLogin() app.HandlerFunc {
 	}
 }
 
-// AuthBody 若token在请求体里，解析token
+// AuthBody 用于 multipart 上传：token 位于请求体。
 func AuthBody() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		token := c.PostForm("token")
-		// 解析token
 		claims, err := common.ParseToken(token)
 		if err != nil {
-			// token有误（含len(token)=0的情况），阻止后面函数执行
 			c.Abort()
-			c.JSON(http.StatusUnauthorized, Response{
-				StatusCode: common.CodeInvalidToken,
-				StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
-			})
+			c.JSON(http.StatusUnauthorized, Response{StatusCode: common.CodeInvalidToken, StatusMsg: common.MapErrMsg(common.CodeInvalidToken)})
 			return
 		}
-		// 查看token是否在redis中, 若在，给token续期, 若不在，则阻止后面函数执行
-		exist := redis.TokenIsExisted(claims.ID)
-		if !exist {
-			// token有误，阻止后面函数执行
+		if !redis.TokenIsExisted(claims.ID) {
 			c.Abort()
-			c.JSON(http.StatusOK, Response{
-				StatusCode: common.CodeInvalidToken,
-				StatusMsg:  common.MapErrMsg(common.CodeInvalidParam),
-			})
+			c.JSON(http.StatusOK, Response{StatusCode: common.CodeInvalidToken, StatusMsg: common.MapErrMsg(common.CodeInvalidToken)})
 			return
 		}
-		go func(id uint) {
-			// 给token续期
-			redis.SetToken(id, token)
-		}(claims.ID)
-
+		redis.SetToken(claims.ID, token)
 		c.Set(common.ContextUserIDKey, claims.ID)
 		c.Next(ctx)
 	}

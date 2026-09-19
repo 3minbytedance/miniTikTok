@@ -12,7 +12,7 @@ const (
 	startTime            = "00:00:01" // 截取第1秒的帧
 )
 
-//GetVideoFrames ffmpeg 实现，现弃用，改为使用oss的功能
+// GetVideoFrames ffmpeg 实现，现弃用，改为使用oss的功能
 func GetVideoFrames(videoPath string, outputPath string) {
 	if videoPath == "" || outputPath == "" {
 		zap.L().Error("路径未指定")
@@ -26,7 +26,9 @@ func GetVideoFrames(videoPath string, outputPath string) {
 	cmd := exec.Command("ffmpeg", args...)
 
 	// 运行 ffmpeg 命令
-	cmd.Run()
+	if err := cmd.Run(); err != nil {
+		zap.L().Error("ffmpeg GetVideoFrames failed", zap.Error(err))
+	}
 }
 
 // Transcoding 转为h264
@@ -40,7 +42,7 @@ func Transcoding(src string, dst string, overwrite bool) {
 
 	// 运行 ffmpeg 命令
 	if err := cmd.Run(); err != nil {
-		zap.L().Error("ffmpeg出错",zap.Error(err))
+		zap.L().Error("ffmpeg出错", zap.Error(err))
 		return
 	}
 }

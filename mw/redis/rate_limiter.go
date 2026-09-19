@@ -46,7 +46,7 @@ func AcquireBucket(key string) (bool, int, error) {
 func runScript(keys []string, args ...interface{}) (interface{}, error) {
 	val, err := redis.NewScript(rateScript).Run(Ctx, Rdb, keys, args).Result()
 	if err != nil && err != redis.Nil {
-		return nil, nil
+		return nil, err
 	}
 	return val, nil
 }

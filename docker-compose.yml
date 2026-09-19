@@ -1,0 +1,201 @@
+# 一键启动整套环境（基础设施 + 4 个微服务）：
+#   docker compose up -d --build
+# MySQL 自动创建 doushen 库；业务表由服务启动时的 GORM AutoMigrate 自动创建。
+
+name: douyin
+
+x-app-env: &app-env
+  DOUYIN_CONFIG: config/app.docker.yaml
+  DOUYIN_ETCD_ADDR: etcd:2379
+  TZ: Asia/Shanghai
+
+services:
+  # ---------- 基础设施 ----------
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.14
+    container_name: douyin-etcd
+    command:
+      - etcd
+      - --name=etcd0
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd0=http://etcd:2380
+      - --data-dir=/etcd-data
+    ports:
+      - "2379:2379"
+    volumes:
+      - etcd_data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mysql:
+    image: mysql:8.0
+    container_name: douyin-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: doushen
+      MYSQL_USER: doushen
+      MYSQL_PASSWORD: doushen123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-bookworm
+    container_name: douyin-redis
+    command: ["redis-server", "--requirepass", "redis123", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    container_name: douyin-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: mongo123
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "admin", "-p", "mongo123", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: douyin-kafka
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ---------- 业务服务 ----------
+  social:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: social
+    container_name: douyin-social
+    environment: *app-env
+    ports:
+      - "4002:4002"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  video:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: video
+    container_name: douyin-video
+    environment: *app-env
+    ports:
+      - "4003:4003"
+    volumes:
+      - media:/app/tmp   # 与 api 共享：本地降级模式下的视频与封面
+    depends_on:
+      etcd:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  message:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: message
+    container_name: douyin-message
+    environment: *app-env
+    ports:
+      - "4005:4005"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: api
+    container_name: douyin-api
+    environment: *app-env
+    ports:
+      - "8080:8080"
+    volumes:
+      - media:/app/tmp   # 与 video 共享：通过 /static/ 提供视频/封面访问
+    depends_on:
+      etcd:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      social:
+        condition: service_started
+      video:
+        condition: service_started
+      message:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  etcd_data:
+  mysql_data:
+  redis_data:
+  mongo_data:
+  kafka_data:
+  media:

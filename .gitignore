@@ -24,7 +24,6 @@ go.work
 /.idea/
 .idea/
 /go_build_*
-out/
 .vscode/
 .vscode/settings.json
 *.sublime*
@@ -36,12 +35,17 @@ tmp/
 # Ignore .DS_Store files
 .DS_Store
 
-# Service build output
-**/output/
+# IDE 本地数据
+.trae/
+.idea/
+
+# 统一构建产物目录
+/build/
 
 # Project ignore
-service/**/output/
 .env
 /tls/
 
-config
+# 运行期日志与 pid
+/log/
+/run/

@@ -67,9 +67,3 @@ struct UserExistsRequest {
 struct UserExistsResponse {
     1: bool exist,
 }
-
-service UserService {
-    UserRegisterResponse Register(1: UserRegisterRequest Request),
-    UserLoginResponse Login(1: UserLoginRequest Request),
-    UserInfoByIdResponse GetUserInfoById(1: UserInfoByIdRequest Request),
-}

@@ -1,9 +1,11 @@
 package config
 
 import (
+	"log"
+	"os"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
-	"log"
 )
 
 var (
@@ -18,23 +20,21 @@ type AppConfig struct {
 	Port       int    `mapstructure:"port"`
 	Version    string `mapstructure:"version"`
 	*LogConfig `mapstructure:"log"`
+	*OSSConfig `mapstructure:"oss"`
+	*ObsConfig `mapstructure:"observability"`
 
 	Local struct {
-		*MySQLConfig    `mapstructure:"mysql"`
-		*RedisConfig    `mapstructure:"redis"`
-		*KafkaConfig    `mapstructure:"kafka"`
-		*MongoConfig    `mapstructure:"mongo"`
-		*RocketMQConfig `mapstructure:"rocketmq"`
-		*GraphDBConfig  `mapstructure:"graphDB"`
+		*MySQLConfig `mapstructure:"mysql"`
+		*RedisConfig `mapstructure:"redis"`
+		*KafkaConfig `mapstructure:"kafka"`
+		*MongoConfig `mapstructure:"mongo"`
 	} `mapstructure:"local"`
 
 	Remote struct {
-		*MySQLConfig    `mapstructure:"mysql"`
-		*RedisConfig    `mapstructure:"redis"`
-		*KafkaConfig    `mapstructure:"kafka"`
-		*MongoConfig    `mapstructure:"mongo"`
-		*RocketMQConfig `mapstructure:"rocketmq"`
-		*GraphDBConfig  `mapstructure:"graphDB"`
+		*MySQLConfig `mapstructure:"mysql"`
+		*RedisConfig `mapstructure:"redis"`
+		*KafkaConfig `mapstructure:"kafka"`
+		*MongoConfig `mapstructure:"mongo"`
 	} `mapstructure:"remote"`
 }
 
@@ -83,27 +83,37 @@ type MongoConfig struct {
 	DB       string `mapstructure:"db"`
 }
 
-type RocketMQConfig struct {
-	Address  string `mapstructure:"address"`
-	Port     int    `mapstructure:"port"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
+// OSSConfig 对象存储配置。Enabled=false（或关键字段为空）时自动降级到本地文件存储。
+type OSSConfig struct {
+	Enabled           bool   `mapstructure:"enabled"`
+	BucketURL         string `mapstructure:"bucket_url"`    // COS Bucket 访问地址
+	CIBucketURL       string `mapstructure:"ci_bucket_url"` // COS 数据万象地址（视频截帧）
+	SecretID          string `mapstructure:"secret_id"`
+	SecretKey         string `mapstructure:"secret_key"`
+	SessionToken      string `mapstructure:"session_token"`
+	Region            string `mapstructure:"region"`
+	Bucket            string `mapstructure:"bucket"`
+	LocalFallbackPath string `mapstructure:"local_fallback_path"` // 本地降级存储目录
+	StaticURLPrefix   string `mapstructure:"static_url_prefix"`   // 本地文件对外访问的 URL 前缀
 }
 
-type GraphDBConfig struct {
-	Address   string `mapstructure:"address"`
-	Port      int    `mapstructure:"port"`
-	Username  string `mapstructure:"username"`
-	Password  string `mapstructure:"password"`
-	Namespace string `mapstructure:"namespace"`
+// ObsConfig 可观测性配置（OpenTelemetry / Prometheus）。
+type ObsConfig struct {
+	ServiceName    string `mapstructure:"service_name"`
+	CollectorAddr  string `mapstructure:"collector_addr"` // otel collector 地址，为空则只导出日志/metrics
+	MetricsEnabled bool   `mapstructure:"metrics_enabled"`
+	TraceEnabled   bool   `mapstructure:"trace_enabled"`
 }
 
 func Init() (err error) {
-	//viper.AddConfigPath("../../config")
-	//viper.SetConfigName("app")
-	viper.SetConfigFile("config/app.yaml") // 指定配置文件路径
-	err = viper.ReadInConfig()             // 读取配置信息
-	if err != nil {                        // 读取配置信息失败¬
+	// 可通过 DOUYIN_CONFIG 环境变量指定配置文件（容器部署时指向 app.docker.yaml），默认本地配置。
+	configFile := os.Getenv("DOUYIN_CONFIG")
+	if configFile == "" {
+		configFile = "config/app.yaml"
+	}
+	viper.SetConfigFile(configFile) // 指定配置文件路径
+	err = viper.ReadInConfig()      // 读取配置信息
+	if err != nil {                 // 读取配置信息失败¬
 		log.Fatalf("Read app.yaml failed: %s \n", err)
 	}
 

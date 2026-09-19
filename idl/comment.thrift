@@ -33,9 +33,3 @@ struct CommentListResponse {
     2: string status_msg, // 返回状态描述
     3: list<Comment> comment_list, // 评论列表
 }
-
-service CommentService {
-    CommentActionResponse CommentAction(1: CommentActionRequest Request),
-    CommentListResponse GetCommentList(1: CommentListRequest Request),
-    i32 GetCommentCount(1: i64 video_id), //根据video_id获取评论数
-}

@@ -33,6 +33,12 @@ func FindUserByUserID(id uint) (user model.User, exist bool, err error) {
 	return user, true, nil
 }
 
+// GetUserInfoByID 查询用户资料（头像/背景/简介）。
+func GetUserInfoByID(id uint) (info model.UserInfo, err error) {
+	err = DB.Where("id = ?", id).First(&info).Error
+	return
+}
+
 func CreateUser(user *model.User) error {
 	userInfo := model.UserInfo{
 		ID:   user.ID,

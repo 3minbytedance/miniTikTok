@@ -1,87 +1,92 @@
 package main
 
 import (
+	"net"
+	"strconv"
+
 	"douyin/common"
 	"douyin/config"
 	"douyin/constant"
 	"douyin/dal/mysql"
-	video "douyin/kitex_gen/video/videoservice"
+	"douyin/kitex_gen/videoapp/videoappservice"
 	"douyin/logger"
 	"douyin/mw/kafka"
 	"douyin/mw/redis"
-	"github.com/cloudwego/kitex/pkg/rpcinfo"
+	"douyin/observability"
+
 	"github.com/cloudwego/kitex/server"
 	"github.com/kitex-contrib/obs-opentelemetry/tracing"
 	etcd "github.com/kitex-contrib/registry-etcd"
 	"go.uber.org/zap"
-	"log"
-	"net"
 )
 
 func main() {
-	// Etcd 服务发现
-	r, err := etcd.NewEtcdRegistry([]string{constant.EtcdAddr}) // r should not be reused.
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 加载配置
+	// 1. 配置与日志
 	if err := config.Init(); err != nil {
-		zap.L().Error("Load config failed, err:%v\n", zap.Error(err))
-		return
-	}
-	// 加载日志
-	if err := logger.Init(config.Conf.LogConfig, config.Conf.Mode); err != nil {
-		zap.L().Error("Init logger failed, err:%v\n", zap.Error(err))
-		return
-	}
-
-	// 初始化数据库: mysql
-	if err := mysql.Init(config.Conf); err != nil {
-		zap.L().Error("Init mysql failed, err:%v\n", zap.Error(err))
-		return
-	}
-
-	// 初始化中间件: redis + kafka
-	if err := redis.Init(config.Conf); err != nil {
-		zap.L().Error("Init middleware failed, err:%v\n", zap.Error(err))
-		return
-	}
-	if err := kafka.Init(config.Conf); err != nil {
-		zap.L().Error("Init kafka failed, err:%v\n", zap.Error(err))
-		return
-	}
-	// 初始化视频模块的kafka
-	kafka.InitVideoKafka()
-
-	// 创建临时文件夹
-	err = common.CreateDirectoryIfNotExist()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// 初始化Bloom Filter
-	common.InitWorkCountFilter()
-	common.LoadWorkCountToBloomFilter()
-
-	InitVideoListToRedis()
-
-	addr, err := net.ResolveTCPAddr("tcp", constant.VideoServicePort)
-	if err != nil {
 		panic(err)
 	}
-
-	svr := video.NewServer(
-		new(VideoServiceImpl),
-		server.WithServiceAddr(addr),
-		server.WithSuite(tracing.NewServerSuite()),
-		server.WithServerBasicInfo(&rpcinfo.EndpointBasicInfo{ServiceName: constant.VideoServiceName}),
-		server.WithRegistry(r),
-		server.WithMuxTransport(),
+	if err := logger.Init(config.Conf.LogConfig, config.Conf.Mode); err != nil {
+		panic(err)
+	}
+	obsCfg := config.Conf.ObsConfig
+	shutdown := observability.InitTracing(
+		observability.ServiceName(obsCfg, constant.VideoServiceName),
+		observability.CollectorAddr(obsCfg), observability.TraceEnabled(obsCfg), observability.MetricsEnabled(obsCfg),
 	)
+	defer shutdown()
 
-	err = svr.Run()
+	// 2. 存储、缓存与消息队列
+	if err := mysql.Init(config.Conf); err != nil {
+		zap.L().Fatal("init mysql failed", zap.Error(err))
+	}
+	if err := redis.Init(config.Conf); err != nil {
+		zap.L().Fatal("init redis failed", zap.Error(err))
+	}
+	if err := kafka.Init(config.Conf); err != nil {
+		zap.L().Fatal("init kafka failed", zap.Error(err))
+	}
+
+	// 3. 雪花 ID、敏感词与 Bloom
+	node, _ := strconv.ParseInt(config.Conf.Node, 10, 64)
+	if err := common.InitSnowflake(node); err != nil {
+		zap.L().Fatal("init snowflake failed", zap.Error(err))
+	}
+	if err := common.InitSensitiveFilter(); err != nil {
+		zap.L().Warn("init sensitive filter failed", zap.Error(err))
+	}
+	common.InitCommentBloomFilter()
+	common.InitWorkCountFilter()
+	common.InitIsFavoriteFilter()
+	common.InitFavoriteVideoIdFilter()
+	common.LoadCommentVideoIdToBloomFilter()
+	common.LoadWorkCountToBloomFilter()
+	common.LoadIsFavoriteToBloomFilter()
+	common.LoadFavoriteVideoIdToBloomFilter()
+
+	// 4. kafka 视频发布消费者
+	kafka.InitVideoKafka()
+
+	// 5. 跨域 RPC client
+	if err := initSocialClient(); err != nil {
+		zap.L().Fatal("init social client failed", zap.Error(err))
+	}
+
+	// 6. 注册中心 + Kitex Server
+	r, err := etcd.NewEtcdRegistry([]string{constant.EtcdAddr})
 	if err != nil {
-		log.Fatal(err)
+		zap.L().Fatal("new etcd registry failed", zap.Error(err))
+	}
+	addr, _ := net.ResolveTCPAddr("tcp", constant.VideoServicePort)
+	basicInfo := observability.EndpointInfo(constant.VideoServiceName)
+	svr := videoappservice.NewServer(
+		&VideoAppServiceImpl{},
+		server.WithServerBasicInfo(&basicInfo),
+		server.WithServiceAddr(addr),
+		server.WithRegistry(r),
+		server.WithSuite(tracing.NewServerSuite()),
+	)
+	zap.L().Info("video service starting", zap.String("addr", constant.VideoServicePort))
+	if err := svr.Run(); err != nil {
+		zap.L().Fatal("video service stopped", zap.Error(err))
 	}
 }

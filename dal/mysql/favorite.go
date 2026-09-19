@@ -12,6 +12,15 @@ func GetUserFavoriteCount(id uint) (int64, error) {
 	return cnt, err
 }
 
+// GetUserTotalFavoritedCount 统计某用户发布的所有视频获得的点赞总数。
+func GetUserTotalFavoritedCount(authorId uint) (int64, error) {
+	var cnt int64
+	err := DB.Model(&model.Favorite{}).
+		Where("video_id IN (?)", DB.Model(&model.Video{}).Select("id").Where("author_id = ?", authorId)).
+		Count(&cnt).Error
+	return cnt, err
+}
+
 func GetVideoFavoriteCountByVideoId(id uint) (int64, error) {
 	var cnt int64
 	err := DB.Model(&model.Favorite{}).Where("video_id = ?", id).Count(&cnt).Error

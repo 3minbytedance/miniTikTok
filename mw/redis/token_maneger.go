@@ -2,32 +2,23 @@ package redis
 
 import (
 	"go.uber.org/zap"
-	"strconv"
-	"strings"
 	"time"
 )
 
-const expireTime = 7 * 24 * time.Hour // 7天
+const tokenExpireTime = 7 * 24 * time.Hour // 7天
 
-// SetToken 设置token
+// SetToken 设置 token
 func SetToken(userId uint, token string) {
-	// userId作为key
-	baseSlice := []string{TokenKey, strconv.Itoa(int(userId))}
-	key := strings.Join(baseSlice, Delimiter)
-	err := Rdb.Set(Ctx, key, token, expireTime).Err()
-	if err != nil {
+	if err := Rdb.Set(Ctx, tokenK(userId), token, tokenExpireTime).Err(); err != nil {
 		zap.L().Error("SetToken failed", zap.Error(err))
 	}
 }
 
-// TokenIsExisted 判断用户对应的token是否存在
+// TokenIsExisted 判断用户对应的 token 是否存在
 func TokenIsExisted(userId uint) bool {
-	baseSlice := []string{TokenKey, strconv.Itoa(int(userId))}
-	key := strings.Join(baseSlice, Delimiter)
-	// 判断key是否存在
-	exists, err := Rdb.Exists(Ctx, key).Result()
+	exists, err := Rdb.Exists(Ctx, tokenK(userId)).Result()
 	if err != nil {
 		return false
 	}
-	return err == nil && exists == 1
+	return exists == 1
 }
