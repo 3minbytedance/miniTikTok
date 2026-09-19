@@ -5,12 +5,13 @@ import (
 )
 
 type Video struct {
-	ID        uint   `gorm:"primaryKey"`
-	AuthorId  uint   `gorm:"index"`
-	VideoUrl  string `gorm:"not null"`
-	CoverUrl  string `gorm:"not null"`
-	Title     string
-	CreatedAt int64 `gorm:"autoCreateTime"`
+	ID       uint   `gorm:"primaryKey"`
+	AuthorId uint   `gorm:"index"`
+	VideoUrl string `gorm:"not null"`
+	CoverUrl string `gorm:"not null"`
+	Title    string
+	// created_at 索引支撑 feed 回填的 WHERE created_at < ? ORDER BY created_at DESC
+	CreatedAt int64 `gorm:"autoCreateTime;index"`
 	DeletedAt gorm.DeletedAt
 }
 

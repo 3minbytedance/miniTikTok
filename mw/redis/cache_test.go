@@ -45,6 +45,9 @@ func TestKeyBuilders(t *testing.T) {
 	if lockK("videos") != "lock:videos" {
 		t.Errorf("lockK = %q", lockK("videos"))
 	}
+	if emptyK("follow:3") != "empty:follow:3" {
+		t.Errorf("emptyK = %q", emptyK("follow:3"))
+	}
 }
 
 func TestParseUintMembers(t *testing.T) {

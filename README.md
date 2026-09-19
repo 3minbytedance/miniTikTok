@@ -18,7 +18,7 @@
 | 文档数据库 | MongoDB（私信消息） | driver v1.12.1 |
 | 消息队列 | Kafka（segmentio/kafka-go） | v0.4.42 |
 | 可观测性 | OpenTelemetry + Prometheus + Zap | obs-opentelemetry v0.3.0 |
-| 其他 | JWT、雪花 ID、布隆过滤器、敏感词过滤、Viper 配置 | — |
+| 其他 | JWT、雪花 ID、敏感词过滤、Viper 配置 | — |
 
 ## 服务与端口
 
@@ -44,9 +44,9 @@
 │   ├── social/         # 用户 + 关系链 RPC 服务
 │   ├── video/          # 视频 + 评论 + 点赞 RPC 服务
 │   └── message/        # 私信 RPC 服务
-├── dal/                # 数据访问层：mysql / mongo / model
-├── mw/                 # 中间件：redis（缓存+限流+token）、kafka、localcache
-├── common/             # 公共能力：JWT、雪花ID、布隆、敏感词、OSS/本地存储
+├── dal/                # 数据访问层：mysql（social / video 两个域包 + internal/conn 公共连接）、mongo、model
+├── mw/                 # 中间件：redis（缓存+限流+token）、kafka
+├── common/             # 公共能力：JWT、雪花ID、敏感词、OSS/本地存储
 ├── observability/      # tracing、Prometheus 指标、trace_id 日志
 ├── config/             # app.yaml（本地）/ app.docker.yaml（容器）
 ├── constant/           # 服务名端口等常量、业务常量

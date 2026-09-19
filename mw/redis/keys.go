@@ -43,11 +43,17 @@ func toInt64(v interface{}) int64 {
 // mw/redis 仅保留网关与各服务共享的基础设施 key；
 // 各业务域 key 定义在对应服务内（service/social/cache.go、service/video/cache.go）。
 const (
-	tokenKey   = "token"
-	lockPrefix = "lock"
+	tokenKey    = "token"
+	lockPrefix  = "lock"
+	emptyPrefix = "empty"
 )
 
 func tokenK(uid uint) string { return BuildKey(tokenKey, uid) }
 func lockK(key string) string {
 	return BuildKey(lockPrefix, key)
+}
+
+// emptyK 集合空结果哨兵 key：Redis 无法保存空集合，用独立短 TTL key 标记"已回源且为空"，防穿透。
+func emptyK(key string) string {
+	return BuildKey(emptyPrefix, key)
 }

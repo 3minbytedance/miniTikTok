@@ -3,6 +3,8 @@ package redis
 import (
 	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -23,16 +25,20 @@ const (
 	messageMaxCount  = 50
 )
 
+// limiterScript 原子完成自增与首次设置过期时间：
+// 若拆成 INCR + EXPIRE 两步，中间失败会留下永不过期的计数 key，导致该 IP 被永久限流。
+var limiterScript = redis.NewScript(`
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+	redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`)
+
 func incrementLimiterCount(key string, maxCount int) bool {
-	count, err := Rdb.Incr(Ctx, key).Result()
+	count, err := limiterScript.Run(Ctx, Rdb, []string{key}, int(limiterTime.Seconds())).Int64()
 	if err != nil {
 		return false
-	}
-	if count == 1 {
-		// 首次计数，设置过期时间
-		if _, err := Rdb.Expire(Ctx, key, limiterTime).Result(); err != nil {
-			return false
-		}
 	}
 	return count <= int64(maxCount)
 }

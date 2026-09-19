@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"strconv"
 	"time"
 
 	"douyin/common"
 	"douyin/dal/model"
-	"douyin/dal/mysql"
+	videodao "douyin/dal/mysql/video"
 	kafkamw "douyin/mw/kafka"
 
 	"github.com/segmentio/kafka-go"
@@ -118,17 +117,16 @@ func (m *VideoMQ) handle(videoMsg *VideoMessage) {
 		Title:     videoMsg.Title,
 		CreatedAt: time.Now().Unix(),
 	}
-	if !mysql.InsertVideo(video) {
+	if !videodao.InsertVideo(video) {
 		zap.L().Error("[VideoMQ] insert video to mysql failed")
 		return
 	}
 
-	// 4. 维护 feed ZSet、失效作品数缓存、登记 Bloom。
+	// 4. 维护 feed ZSet、失效作品数缓存。
 	if err := AddVideoToFeed(ctx, video.ID, video.CreatedAt); err != nil {
 		zap.L().Error("[VideoMQ] add video to feed failed", zap.Error(err))
 	}
 	InvalidateWorkCount(ctx, videoMsg.UserID)
-	AddToWorkCountBloom(strconv.FormatUint(uint64(videoMsg.UserID), 10))
 
 	// 5. OSS 模式下删除本地暂存文件；本地降级模式保留文件用于 /static 访问。
 	if common.OSSConfigured() {

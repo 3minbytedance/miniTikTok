@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"douyin/common"
 	"douyin/dal/model"
-	"douyin/dal/mysql"
+	videodao "douyin/dal/mysql/video"
 	"douyin/kitex_gen/comment"
 	"douyin/kitex_gen/user"
 )
@@ -26,14 +25,13 @@ func (v *VideoAppServiceImpl) CommentAction(ctx context.Context, req *comment.Co
 		}
 		content := common.ReplaceWord(*req.CommentText)
 		c := &model.Comment{VideoId: vid, UserId: uid, Content: content, CreatedAt: time.Now()}
-		id, err := mysql.AddComment(c)
+		id, err := videodao.AddComment(c)
 		if err != nil {
 			resp.StatusCode = common.CodeDBError
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
 		}
 		InvalidateCommentCount(ctx, vid)
-		AddToCommentBloom(itoa64(int64(vid)))
 		resp.StatusCode = common.CodeSuccess
 		resp.Comment = v.buildComment(ctx, c, id)
 		return resp, nil
@@ -44,13 +42,13 @@ func (v *VideoAppServiceImpl) CommentAction(ctx context.Context, req *comment.Co
 			resp.StatusMsg = common.MapErrMsg(common.CodeInvalidParam)
 			return resp, nil
 		}
-		ok, err := mysql.IsCommentBelongsToUser(req.CommentId, req.UserId)
+		ok, err := videodao.IsCommentBelongsToUser(*req.CommentId, req.UserId)
 		if err != nil || !ok {
 			resp.StatusCode = common.CodeInvalidCommentAction
 			resp.StatusMsg = common.MapErrMsg(common.CodeInvalidCommentAction)
 			return resp, nil
 		}
-		if err := mysql.DeleteCommentById(uint(*req.CommentId)); err != nil {
+		if err := videodao.DeleteCommentById(uint(*req.CommentId)); err != nil {
 			resp.StatusCode = common.CodeDBError
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
@@ -68,7 +66,7 @@ func (v *VideoAppServiceImpl) CommentAction(ctx context.Context, req *comment.Co
 
 // GetCommentList 评论列表直接查 MySQL（实时性优先），逐条补用户信息。
 func (v *VideoAppServiceImpl) GetCommentList(ctx context.Context, req *comment.CommentListRequest) (*comment.CommentListResponse, error) {
-	comments, err := mysql.FindCommentsByVideoId(uint(req.VideoId))
+	comments, err := videodao.FindCommentsByVideoId(uint(req.VideoId))
 	if err != nil {
 		return &comment.CommentListResponse{
 			StatusCode: common.CodeDBError,
@@ -82,10 +80,8 @@ func (v *VideoAppServiceImpl) GetCommentList(ctx context.Context, req *comment.C
 	return &comment.CommentListResponse{StatusCode: common.CodeSuccess, CommentList: list}, nil
 }
 
+// GetCommentCount 视频评论数（0 值由计数缓存直接缓存，无需额外判否）。
 func (v *VideoAppServiceImpl) GetCommentCount(ctx context.Context, videoId int64) (int32, error) {
-	if !TestCommentBloom(itoa64(videoId)) {
-		return 0, nil
-	}
 	return GetCommentCount(ctx, uint(videoId))
 }
 
@@ -105,8 +101,4 @@ func (v *VideoAppServiceImpl) buildComment(ctx context.Context, c *model.Comment
 		}
 	}
 	return cc
-}
-
-func itoa64(v int64) string {
-	return strconv.FormatInt(v, 10)
 }

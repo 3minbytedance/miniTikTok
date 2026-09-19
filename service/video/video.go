@@ -10,7 +10,7 @@ import (
 	"douyin/common"
 	"douyin/constant/biz"
 	"douyin/dal/model"
-	"douyin/dal/mysql"
+	videodao "douyin/dal/mysql/video"
 	"douyin/kitex_gen/user"
 	"douyin/kitex_gen/video"
 	"douyin/observability"
@@ -48,14 +48,23 @@ func (v *VideoAppServiceImpl) VideoFeed(ctx context.Context, req *video.VideoFee
 	}
 
 	actorId := uint(req.UserId)
+	// 批量查询视频，避免逐条 FindVideoByVideoId 的 N+1。
+	videos, err := videodao.FindVideosByIDs(ids)
+	if err != nil {
+		observability.Logger(ctx).Error("batch find videos failed", errField(err))
+		resp.StatusCode = common.CodeServerBusy
+		resp.StatusMsg = common.MapErrMsg(common.CodeServerBusy)
+		return resp, nil
+	}
+	favorites := prefetchFavorites(ctx, actorId, ids)
 	var nextTime int64
 	list := make([]*video.Video, 0, len(ids))
 	for _, id := range ids {
-		mv, ok := mysql.FindVideoByVideoId(id)
+		mv, ok := videos[id]
 		if !ok {
 			continue
 		}
-		list = append(list, v.buildVideo(ctx, &mv, actorId))
+		list = append(list, v.buildVideo(ctx, &mv, actorId, favorites))
 		nextTime = mv.CreatedAt
 	}
 	if nextTime == 0 {
@@ -109,25 +118,49 @@ func (v *VideoAppServiceImpl) PublishVideo(ctx context.Context, req *video.Publi
 
 // GetPublishVideoList 用户作品列表。
 func (v *VideoAppServiceImpl) GetPublishVideoList(ctx context.Context, req *video.PublishVideoListRequest) (*video.PublishVideoListResponse, error) {
-	videos, _ := mysql.FindVideosByAuthorId(uint(req.ToUserId))
+	videos, err := videodao.FindVideosByAuthorId(uint(req.ToUserId))
+	if err != nil {
+		observability.Logger(ctx).Error("find videos by author failed", errField(err))
+		return &video.PublishVideoListResponse{
+			StatusCode: common.CodeServerBusy,
+			StatusMsg:  common.MapErrMsg(common.CodeServerBusy),
+		}, nil
+	}
 	list := make([]*video.Video, 0, len(videos))
 	actorId := uint(req.FromUserId)
+	ids := make([]uint, 0, len(videos))
 	for i := range videos {
-		list = append(list, v.buildVideo(ctx, &videos[i], actorId))
+		ids = append(ids, videos[i].ID)
+	}
+	favorites := prefetchFavorites(ctx, actorId, ids)
+	for i := range videos {
+		list = append(list, v.buildVideo(ctx, &videos[i], actorId, favorites))
 	}
 	return &video.PublishVideoListResponse{StatusCode: common.CodeSuccess, VideoList: list}, nil
 }
 
+// GetWorkCount 作者作品数（0 值由计数缓存直接缓存，无需额外判否）。
 func (v *VideoAppServiceImpl) GetWorkCount(ctx context.Context, userId int64) (int32, error) {
-	// Bloom 判否：作者无作品直接返回 0。
-	if !TestWorkCountBloom(strconv.FormatInt(userId, 10)) {
-		return 0, nil
-	}
 	return GetWorkCount(ctx, uint(userId))
 }
 
+// prefetchFavorites 批量预取当前用户对该批视频的点赞状态，把逐条判定压缩成一次 IN 查询。
+// actorId 为 0（未登录）或查询失败时返回 nil，等价于全部未点赞。
+func prefetchFavorites(ctx context.Context, actorId uint, videoIds []uint) map[uint]bool {
+	if actorId == 0 || len(videoIds) == 0 {
+		return nil
+	}
+	favorites, err := videodao.BatchIsFavorite(actorId, videoIds)
+	if err != nil {
+		observability.Logger(ctx).Error("batch query favorite failed", errField(err))
+		return nil
+	}
+	return favorites
+}
+
 // buildVideo 组装视频详情：点赞/评论计数为进程内调用，作者信息为唯一跨域 RPC。
-func (v *VideoAppServiceImpl) buildVideo(ctx context.Context, mv *model.Video, actorId uint) *video.Video {
+// favorites 由调用方按页预取，nil 表示全部未点赞。
+func (v *VideoAppServiceImpl) buildVideo(ctx context.Context, mv *model.Video, actorId uint, favorites map[uint]bool) *video.Video {
 	vv := &video.Video{
 		Id:       int64(mv.ID),
 		Title:    mv.Title,
@@ -140,11 +173,7 @@ func (v *VideoAppServiceImpl) buildVideo(ctx context.Context, mv *model.Video, a
 	if cc, err := GetCommentCount(ctx, mv.ID); err == nil {
 		vv.CommentCount = cc
 	}
-	if actorId != 0 {
-		if fav, err := v.isFavorite(ctx, actorId, mv.ID); err == nil {
-			vv.IsFavorite = fav
-		}
-	}
+	vv.IsFavorite = favorites[mv.ID]
 	if socialClient != nil {
 		if ur, err := socialClient.GetUserInfoById(ctx, &user.UserInfoByIdRequest{
 			ActorId: int64(actorId),

@@ -2,21 +2,23 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	"douyin/common"
 	"douyin/dal/model"
-	"douyin/dal/mysql"
+	socialdao "douyin/dal/mysql/social"
 	"douyin/kitex_gen/user"
 	"douyin/mw/redis"
 	"douyin/observability"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 type SocialServiceImpl struct{}
 
-// Register 用户名 Bloom 预查重 → DB 确认 → 加密落库 → 发 token。
+// Register 用户名查重（user_login.name 唯一索引）→ 加密落库 → 发 token。
 func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegisterRequest) (*user.UserRegisterResponse, error) {
 	resp := &user.UserRegisterResponse{}
 
@@ -31,13 +33,16 @@ func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegister
 		return resp, nil
 	}
 
-	// Bloom 判定“可能存在”时再查库确认，防止误判。
-	if TestUserBloom(req.Username) {
-		if _, exist, err := mysql.FindUserByName(req.Username); err == nil && exist {
-			resp.StatusCode = common.CodeUsernameAlreadyExists
-			resp.StatusMsg = common.MapErrMsg(common.CodeUsernameAlreadyExists)
-			return resp, nil
-		}
+	// 存在性判断以 MySQL 唯一索引为准（认证路径强制读主库，避免主从延迟）。
+	if _, exist, err := socialdao.FindUserByName(req.Username); err != nil {
+		observability.Logger(ctx).Error("register query username failed", zap.Error(err))
+		resp.StatusCode = common.CodeServerBusy
+		resp.StatusMsg = common.MapErrMsg(common.CodeServerBusy)
+		return resp, nil
+	} else if exist {
+		resp.StatusCode = common.CodeUsernameAlreadyExists
+		resp.StatusMsg = common.MapErrMsg(common.CodeUsernameAlreadyExists)
+		return resp, nil
 	}
 
 	hashPwd, err := common.MakePassword(req.Password)
@@ -50,13 +55,19 @@ func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegister
 
 	uid := common.GetUid()
 	newUser := &model.User{ID: uid, Name: req.Username, Password: hashPwd}
-	if err := mysql.CreateUser(newUser); err != nil {
-		resp.StatusCode = common.CodeUsernameAlreadyExists
-		resp.StatusMsg = common.MapErrMsg(common.CodeUsernameAlreadyExists)
+	if err := socialdao.CreateUser(newUser); err != nil {
+		// 唯一索引冲突说明并发注册同名用户，其余视为服务端异常。
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			resp.StatusCode = common.CodeUsernameAlreadyExists
+			resp.StatusMsg = common.MapErrMsg(common.CodeUsernameAlreadyExists)
+			return resp, nil
+		}
+		observability.Logger(ctx).Error("create user failed", zap.Error(err))
+		resp.StatusCode = common.CodeServerBusy
+		resp.StatusMsg = common.MapErrMsg(common.CodeServerBusy)
 		return resp, nil
 	}
 
-	AddToUserBloom(req.Username)
 	SetUserName(ctx, uid, req.Username)
 
 	token := common.GenerateToken(uid, req.Username)
@@ -68,17 +79,11 @@ func (s *SocialServiceImpl) Register(ctx context.Context, req *user.UserRegister
 	return resp, nil
 }
 
-// Login Bloom 判否 → DB 校验密码 → 发 token。
+// Login 查库校验密码 → 发 token。
 func (s *SocialServiceImpl) Login(ctx context.Context, req *user.UserLoginRequest) (*user.UserLoginResponse, error) {
 	resp := &user.UserLoginResponse{}
 
-	if !TestUserBloom(req.Username) {
-		resp.StatusCode = common.CodeUsernameNotFound
-		resp.StatusMsg = common.MapErrMsg(common.CodeUsernameNotFound)
-		return resp, nil
-	}
-
-	dbUser, exist, err := mysql.FindUserByName(req.Username)
+	dbUser, exist, err := socialdao.FindUserByName(req.Username)
 	if err != nil || !exist {
 		resp.StatusCode = common.CodeUsernameNotFound
 		resp.StatusMsg = common.MapErrMsg(common.CodeUsernameNotFound)
@@ -123,7 +128,7 @@ func (s *SocialServiceImpl) buildUser(ctx context.Context, uid, actorId uint) (*
 	}
 	u.Name = name
 
-	if info, err := mysql.GetUserInfoByID(uid); err == nil {
+	if info, err := socialdao.GetUserInfoByID(uid); err == nil {
 		u.Avatar = info.Avatar
 		u.BackgroundImage = info.BackgroundImage
 		u.Signature = info.Signature

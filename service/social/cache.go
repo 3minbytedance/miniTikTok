@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
-	"douyin/dal/mysql"
+	socialdao "douyin/dal/mysql/social"
 	"douyin/mw/redis"
 
-	goredis "github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -28,23 +27,18 @@ func followerCntK(uid uint) string { return redis.BuildKey(followerCntKey, uid) 
 
 // ===== 用户名（cache-aside，注册后写入）=====
 
-// GetUserName 读取用户名缓存，未命中回源 MySQL。
+// GetUserName 读取用户名缓存，未命中回源 MySQL（走统一的加锁双检 cache-aside）。
 func GetUserName(ctx context.Context, uid uint) (string, error) {
-	key := userNameK(uid)
-	if name, err := redis.Rdb.Get(ctx, key).Result(); err == nil {
-		return name, nil
-	} else if !errors.Is(err, goredis.Nil) {
-		return "", err
-	}
-
-	user, _, err := mysql.FindUserByUserID(uid)
-	if err != nil {
-		return "", err
-	}
-	if err := redis.Rdb.Set(ctx, key, user.Name, redis.JitterTTL(redis.RdbExpireTime)).Err(); err != nil {
-		return user.Name, err
-	}
-	return user.Name, nil
+	return redis.LoadString(ctx, userNameK(uid), "user_name", redis.RdbExpireTime, func(ctx context.Context) (string, error) {
+		user, exist, err := socialdao.FindUserByUserID(uid)
+		if err != nil {
+			return "", err
+		}
+		if !exist {
+			return "", fmt.Errorf("user %d not found", uid)
+		}
+		return user.Name, nil
+	})
 }
 
 // SetUserName 注册/资料变更后写入用户名缓存。
@@ -59,21 +53,21 @@ func SetUserName(ctx context.Context, uid uint, name string) {
 // GetFollowSet 获取用户关注的用户 id 集合。
 func GetFollowSet(ctx context.Context, uid uint) ([]uint, error) {
 	return redis.LoadUintSet(ctx, followSetK(uid), "relation_follow", redis.RdbExpireTime, func(ctx context.Context) ([]uint, error) {
-		return mysql.GetFollowList(uid)
+		return socialdao.GetFollowList(uid)
 	})
 }
 
 // GetFollowerSet 获取用户粉丝 id 集合。
 func GetFollowerSet(ctx context.Context, uid uint) ([]uint, error) {
 	return redis.LoadUintSet(ctx, followerSetK(uid), "relation_follower", redis.RdbExpireTime, func(ctx context.Context) ([]uint, error) {
-		return mysql.GetFollowerList(uid)
+		return socialdao.GetFollowerList(uid)
 	})
 }
 
 // IsFollowing 判断 uid 是否关注了 target。
 func IsFollowing(ctx context.Context, uid, target uint) (bool, error) {
 	return redis.SetContains(ctx, followSetK(uid), "relation_follow", redis.RdbExpireTime, target, func(ctx context.Context) ([]uint, error) {
-		return mysql.GetFollowList(uid)
+		return socialdao.GetFollowList(uid)
 	})
 }
 
@@ -90,23 +84,25 @@ func IsFriend(ctx context.Context, uid, target uint) (bool, error) {
 
 func GetFollowCount(ctx context.Context, uid uint) (int32, error) {
 	n, err := redis.LoadInt(ctx, followCountK(uid), "relation_follow_count", redis.ShortTTL(), func(ctx context.Context) (int64, error) {
-		return mysql.GetFollowCnt(uid)
+		return socialdao.GetFollowCnt(uid)
 	})
 	return int32(n), err
 }
 
 func GetFollowerCount(ctx context.Context, uid uint) (int32, error) {
 	n, err := redis.LoadInt(ctx, followerCntK(uid), "relation_follower_count", redis.ShortTTL(), func(ctx context.Context) (int64, error) {
-		return mysql.GetFollowerCnt(uid)
+		return socialdao.GetFollowerCnt(uid)
 	})
 	return int32(n), err
 }
 
-// InvalidateRelation 关注/取关写库成功后，删除双方集合与计数缓存。
+// InvalidateRelation 关注/取关写库成功后，删除双方集合（含空哨兵）与计数缓存。
 func InvalidateRelation(ctx context.Context, uid, other uint) {
-	redis.Invalidate(ctx,
+	redis.InvalidateSet(ctx,
 		followSetK(uid), followerSetK(uid),
 		followSetK(other), followerSetK(other),
+	)
+	redis.Invalidate(ctx,
 		followCountK(uid), followerCntK(uid),
 		followCountK(other), followerCntK(other),
 	)

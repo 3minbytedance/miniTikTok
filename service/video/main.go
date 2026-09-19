@@ -7,7 +7,7 @@ import (
 	"douyin/common"
 	"douyin/config"
 	"douyin/constant"
-	"douyin/dal/mysql"
+	videodao "douyin/dal/mysql/video"
 	"douyin/kitex_gen/videoapp/videoappservice"
 	"douyin/logger"
 	"douyin/mw/kafka"
@@ -36,7 +36,7 @@ func main() {
 	defer shutdown()
 
 	// 2. 存储、缓存与消息队列（video 独立数据库：douyin_video）
-	if err := mysql.InitVideo(config.Conf); err != nil {
+	if err := videodao.Init(config.Conf); err != nil {
 		zap.L().Fatal("init mysql failed", zap.Error(err))
 	}
 	if err := redis.Init(config.Conf); err != nil {
@@ -46,7 +46,7 @@ func main() {
 		zap.L().Fatal("init kafka failed", zap.Error(err))
 	}
 
-	// 3. 雪花 ID、敏感词与 Bloom
+	// 3. 雪花 ID 与敏感词
 	node, _ := strconv.ParseInt(config.Conf.Node, 10, 64)
 	if err := common.InitSnowflake(node); err != nil {
 		zap.L().Fatal("init snowflake failed", zap.Error(err))
@@ -54,14 +54,6 @@ func main() {
 	if err := common.InitSensitiveFilter(); err != nil {
 		zap.L().Warn("init sensitive filter failed", zap.Error(err))
 	}
-	InitCommentBloomFilter()
-	InitWorkCountFilter()
-	InitIsFavoriteFilter()
-	InitFavoriteVideoIdFilter()
-	LoadCommentVideoIdToBloomFilter()
-	LoadWorkCountToBloomFilter()
-	LoadIsFavoriteToBloomFilter()
-	LoadFavoriteVideoIdToBloomFilter()
 
 	// 4. kafka 视频发布消费者
 	InitVideoKafka()

@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"strconv"
 
 	"douyin/common"
-	"douyin/dal/mysql"
+	socialdao "douyin/dal/mysql/social"
 	"douyin/kitex_gen/relation"
 	"douyin/kitex_gen/user"
 )
@@ -23,25 +22,23 @@ func (s *SocialServiceImpl) RelationAction(ctx context.Context, req *relation.Re
 
 	switch req.ActionType {
 	case 1: // 关注
-		if mysql.IsFollowing(uid, toUid) {
+		if socialdao.IsFollowing(uid, toUid) {
 			resp.StatusCode = common.CodeFollowRepeat
 			resp.StatusMsg = common.MapErrMsg(common.CodeFollowRepeat)
 			return resp, nil
 		}
-		if err := mysql.AddFollow(uid, toUid); err != nil {
+		if err := socialdao.AddFollow(uid, toUid); err != nil {
 			resp.StatusCode = common.CodeDBError
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
 		}
-		// 关注关系可能为新建用户，补充 Bloom
-		AddToRelationFollowIdBloom(itou(uid))
 	case 2: // 取关
-		if !mysql.IsFollowing(uid, toUid) {
+		if !socialdao.IsFollowing(uid, toUid) {
 			resp.StatusCode = common.CodeCancelFollowRepeat
 			resp.StatusMsg = common.MapErrMsg(common.CodeCancelFollowRepeat)
 			return resp, nil
 		}
-		if err := mysql.DeleteFollowById(uid, toUid); err != nil {
+		if err := socialdao.DeleteFollowById(uid, toUid); err != nil {
 			resp.StatusCode = common.CodeDBError
 			resp.StatusMsg = common.MapErrMsg(common.CodeDBError)
 			return resp, nil
@@ -133,8 +130,4 @@ func (s *SocialServiceImpl) buildUserList(ctx context.Context, ids []uint, actor
 		list = append(list, u)
 	}
 	return list
-}
-
-func itou(v uint) string {
-	return strconv.FormatUint(uint64(v), 10)
 }

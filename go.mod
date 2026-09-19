@@ -6,8 +6,6 @@ toolchain go1.26.8
 
 require (
 	github.com/alexedwards/argon2id v0.0.0-20230305115115-4b3c3280a736
-	github.com/allegro/bigcache/v3 v3.1.0
-	github.com/bits-and-blooms/bloom/v3 v3.5.0
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/cloudwego/gopkg v0.2.0
 	github.com/cloudwego/hertz v0.10.6
@@ -38,7 +36,6 @@ require (
 require (
 	github.com/BurntSushi/toml v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.8.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect

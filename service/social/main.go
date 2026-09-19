@@ -7,7 +7,7 @@ import (
 	"douyin/common"
 	"douyin/config"
 	"douyin/constant"
-	"douyin/dal/mysql"
+	socialdao "douyin/dal/mysql/social"
 	"douyin/kitex_gen/social/socialservice"
 	"douyin/logger"
 	"douyin/mw/redis"
@@ -35,24 +35,18 @@ func main() {
 	defer shutdown()
 
 	// 2. 存储与缓存（social 独立数据库：douyin_social）
-	if err := mysql.InitSocial(config.Conf); err != nil {
+	if err := socialdao.Init(config.Conf); err != nil {
 		zap.L().Fatal("init mysql failed", zap.Error(err))
 	}
 	if err := redis.Init(config.Conf); err != nil {
 		zap.L().Fatal("init redis failed", zap.Error(err))
 	}
 
-	// 3. 雪花 ID 与 Bloom
+	// 3. 雪花 ID
 	node, _ := strconv.ParseInt(config.Conf.Node, 10, 64)
 	if err := common.InitSnowflake(node); err != nil {
 		zap.L().Fatal("init snowflake failed", zap.Error(err))
 	}
-	InitUserBloomFilter()
-	InitRelationFollowIdFilter()
-	InitRelationFollowerIdFilter()
-	LoadUsernamesToBloomFilter()
-	LoadRelationFollowIdToBloomFilter()
-	LoadRelationFollowerIdToBloomFilter()
 
 	// 4. 跨域 RPC client
 	if err := initVideoClient(); err != nil {
